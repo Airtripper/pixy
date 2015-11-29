@@ -43,7 +43,7 @@ enum ColorCodeMode
 class Blobs
 {
 public:
-    Blobs(Qqueue *qq, uint8_t *lut);
+    Blobs(Qqueue *qq, uint8_t *lut, uint8_t *lutExp);
     ~Blobs();
     int blobify();
     uint16_t getBlock(uint8_t *buf, uint32_t buflen);
