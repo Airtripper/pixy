@@ -252,7 +252,7 @@ void cc_loadParams(void)
 int cc_init(Chirp *chirp)
 {
 	g_qqueue = new Qqueue;
-	g_blobs = new Blobs(g_qqueue, LUT_MEMORY);
+	g_blobs = new Blobs(g_qqueue, LUT_MEMORY, LUT_MEMORY);   //hgs: evillive check this, changed to make it compile
 
 	chirp->registerModule(g_module);	
 

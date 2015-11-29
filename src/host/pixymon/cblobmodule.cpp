@@ -20,7 +20,7 @@
 #include "dataexport.h"
 
 // declare module
-//MON_MODULE(CBlobModule);
+// MON_MODULE(CBlobModule);
 
 
 CBlobModule::CBlobModule(Interpreter *interpreter) : MonModule(interpreter)
@@ -110,6 +110,20 @@ CBlobModule::CBlobModule(Interpreter *interpreter) : MonModule(interpreter)
     m_fixedLength = true;
     m_maxDist = MAX_DIST;
     m_minRatio = MIN_RATIO;
+
+    for(int i=1; i<=NUM_SIGNATURES;++i){
+       const int nameLen = 10;
+       char tabName[nameLen];
+       char sldName[nameLen];
+       snprintf( tabName, nameLen,"Sig%d",i);
+       m_hueRange[i-1]=m_satRange[i-1]=m_valRange[i-1]=  DEFAULT_RANGE;
+       snprintf( sldName, nameLen,"Hue%d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_hueRange[i-1], 0.0f, 10.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Sat%d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_satRange[i-1], 0.0f, 10.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Val%d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_valRange[i-1], 0.0f, 10.0f, "The range for identifying the colors of a signature.", tabName);
+    }
 
     m_interpreter->m_pixymonParameters->addSlider("Range", m_acqRange, 0.0f, 10.0f, "The range for identifying the colors of a signature.", "CBA");
     m_interpreter->m_pixymonParameters->addSlider("Min Y", m_miny, 0.0f, 1.0f, "Minimum brightness for a signature.", "CBA");

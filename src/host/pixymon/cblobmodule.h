@@ -134,6 +134,9 @@ private:
 
     ColorSignature m_signatures[NUM_SIGNATURES];
     RuntimeSignature m_runtimeSigs[NUM_SIGNATURES];
+    float m_hueRange[NUM_SIGNATURES];
+    float m_satRange[NUM_SIGNATURES];
+    float m_valRange[NUM_SIGNATURES];
     float m_acqRange;
     float m_trackRange;
     float m_miny;

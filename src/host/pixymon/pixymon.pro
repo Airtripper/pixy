@@ -39,7 +39,8 @@ SOURCES += main.cpp\
     monparameterdb.cpp \
     cccmodule.cpp \
     debug.cpp \
-    blobs2.cpp
+    blobs2.cpp \
+    ../../common/src/experimentalsignature.cpp
 
 HEADERS  += mainwindow.h \
     videowidget.h \
@@ -78,12 +79,13 @@ HEADERS  += mainwindow.h \
     monparameterdb.h \
     cccmodule.h \
     debug.h \
-    blobs2.h
+    blobs2.h \
+    ../../common/inc/experimentalsignature.h
 
 INCLUDEPATH += ../../common/inc
 
 QMAKE_CXXFLAGS_DEBUG += -O0
-QMAKE_CXXFLAGS += -Wno-unused-parameter
+QMAKE_CXXFLAGS += -Wno-unused-parameter -Wall
 FORMS    += mainwindow.ui \
     configdialog.ui \
     about.ui
@@ -92,11 +94,11 @@ FORMS    += mainwindow.ui \
 
 win32 {
     DEFINES += __WINDOWS__
-    QMAKE_CXXFLAGS += -mno-ms-bitfields
+    QMAKE_CXXFLAGS += -mno-ms-bitfields -Wall
     LIBS += ../windows/libusb-1.0.dll.a
     HEADERS += ../windows/libusb.h
     INCLUDEPATH += ../windows
-    QMAKE_CXXFLAGS += -mno-ms-bitfields
+    QMAKE_CXXFLAGS += -mno-ms-bitfields -Wall
 }
 
 macx {

@@ -22,6 +22,8 @@
 #include "qqueue.h"
 #include "colorlut.h"
 #include "calc.h"
+#include "debug.h"
+
 
 // declare module
 MON_MODULE(CccModule);
@@ -33,7 +35,26 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
     m_crc = 0;
     m_qq = new Qqueue();
     m_lut = new uint8_t[CL_LUT_SIZE];
-    m_blobs = new Blobs(m_qq, m_lut);
+    m_lutExp = new uint8_t[CL_LUT_SIZE];
+    m_blobs = new Blobs(m_qq, m_lut, m_lutExp);
+
+    m_interpreter->m_pixymonParameters->addCheckbox("Use exp sigs", m_blobs->m_clut.m_useExpSigs, "Use experimental signatures","expSigs");
+    m_interpreter->m_pixymonParameters->addCheckbox("Logging", g_logExp, "Logging","expSigs");
+
+    for(int i=0; i<CL_NUM_SIGNATURES;++i){
+       const int nameLen = 30;
+       char tabName[nameLen];
+       char sldName[nameLen];
+       snprintf( tabName, nameLen,"Sig %d",i+1);
+       snprintf( sldName, nameLen,"Hue range %d",i+1);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvHueRange(), -1.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Sat range %d",i+1);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvSatRange(), -1.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Val Min %d",i+1);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvValMin() , 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Val Max %d",i+1);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvValMax(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+    }
 
     Parameter rm("Cooked render mode", PT_INT8, 2, "Cooked video rendering mode.");
     rm.addRadioValue(RadioValue("Boxes only", 0));
@@ -43,14 +64,105 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
 
     m_renderMode = pixymonParameter("Cooked render mode").toUInt();
 
+//<<<<disco<<< HEAD
+    QStringList scriptlet;
+
+    scriptlet << "cam_testPattern 1";
+    scriptlet << "cam_setWBV 0x404040";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("TestPattern On", scriptlet);
+    scriptlet << "cam_testPattern 0";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("TestPattern Off", scriptlet);
+
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "newsigArea 1";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Create new signature 1...", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "newsigArea 2";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Create new signature 2...", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "newsigArea 3";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Create new signature 3...", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "newsigArea 4";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Create new signature 4...", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "newsigArea 5";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Create new signature 5...", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "newsigArea 6";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Create new signature 6...", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "newsigArea 7";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Create new signature 7...", scriptlet);
+
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 1";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear signature 1", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 2";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear signature 2", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 3";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear signature 3", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 4";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear signature 4", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 5";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear signature 5", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 6";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear signature 6", scriptlet);
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 7";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear signature 7", scriptlet);
+
+    scriptlet.clear();
+    scriptlet << "cam_getFrame 0x21 0 0 320 200";
+    scriptlet << "clearSig 0";
+    scriptlet << "runprogArg 8 1";
+    m_interpreter->emitActionScriptlet("Clear ALL signatures ", scriptlet);
+//===disco====
     for (i=0; i<CL_NUM_SIGNATURES; i++)
         m_palette[i] = Qt::black;
+//>>>disco>>>> refs/remotes/charmedlabs/master
 }
 
 CccModule::~CccModule()
 {
     delete m_blobs;
     delete [] m_lut;
+    delete [] m_lutExp;
     delete m_qq;
 }
 
@@ -81,6 +193,54 @@ bool CccModule::render(uint32_t fourcc, const void *args[])
 
 bool CccModule::command(const QStringList &argv)
 {
+    if (argv[0]=="newsigArea" || argv[0]=="clearSig" )
+    {
+        bool kickIt = argv[0]=="clearSig";
+
+        uint8_t sig;
+        if (argv.size()<2)
+        {
+            cprintf("error: missing signature");
+            return true;
+        }
+        sig = argv[1].toUInt();
+
+        if(kickIt){
+            if (sig>7)
+            {
+                cprintf("error: signature number out of range!");
+                return true;
+            }
+            if(sig){
+                m_blobs->m_clut.m_signatures[sig-1]=ColorSignature();
+                m_blobs->m_clut.m_expSigs[sig-1].setIsActive(false);
+            }else{
+                for(int i=0; i<7; ++i){
+                    m_blobs->m_clut.m_signatures[i]=ColorSignature();
+                    m_blobs->m_clut.m_expSigs[i].setIsActive(false);
+                }
+            }
+        }else{
+            if (sig<1 || sig>7)
+            {
+                cprintf("error: signature number out of range!");
+                return true;
+            }
+            Frame8 *frame = m_interpreter->m_renderer->backgroundRaw();
+
+            RectA region;
+            m_interpreter->getSelection(&region);
+
+            m_interpreter->m_renderer->pixelsOut(region.m_xOffset, region.m_yOffset, region.m_width, region.m_height);
+            m_blobs->m_clut.generateSignature(*frame, region, sig);
+        }
+        m_blobs->m_clut.updateSignature(sig);
+        m_blobs->m_clut.generateLUT();
+        uint32_t palette[CL_NUM_SIGNATURES];
+        for (int i=0; i<CL_NUM_SIGNATURES; i++) palette[i] = m_blobs->m_clut.m_signatures[i].m_rgb;
+        m_renderer->setPalette(palette);
+        return true;
+    }
     return false;
 }
 
@@ -124,12 +284,17 @@ void CccModule::paramChange()
     int i;
     QVariant val;
     bool relut = false;
+//<<<<disco<<< HEAD
+    uint32_t palette[CL_NUM_SIGNATURES];
+    /*  don't load signatures from Pixy as we are setting them up within PixyMon
+//===disco====
+//>>>disco>>>> refs/remotes/charmedlabs/master
     char id[128];
     uint32_t sigLen;
     uint8_t *sigData;
     QByteArray ba;
 
-    // check to see if any signatures have changed
+    // check to see if any signatures have changed  
     for (i=0; i<CL_NUM_SIGNATURES; i++)
     {
         sprintf(id, "signature%d", i+1);
@@ -144,6 +309,7 @@ void CccModule::paramChange()
             }
         }
     }
+    */
     if (pixyParameterChanged("Signature 1 range", &val))
     {
         m_blobs->m_clut.setSigRange(1, val.toFloat());
@@ -188,6 +354,35 @@ void CccModule::paramChange()
     {
         m_blobs->m_clut.setCCGain(val.toFloat());
         relut = true;
+    }
+
+    m_blobs->m_clut.m_useExpSigs = pixymonParameter("Use exp sigs").toBool();
+    g_logExp = pixymonParameter("Logging").toBool();
+
+    for(int i=0; i<CL_NUM_SIGNATURES;++i){
+        const int nameLen = 30;
+        char sldName[nameLen];
+
+        snprintf( sldName, nameLen,"Hue range %d",i+1);
+        if( pixymonParameterChanged(sldName, &val)){
+            m_blobs->m_clut.m_expSigs[i].setHsvHueRange(val.toFloat());
+            relut = true;
+        }
+        snprintf( sldName, nameLen,"Sat range %d",i+1);
+        if( pixymonParameterChanged(sldName, &val)){
+            m_blobs->m_clut.m_expSigs[i].setHsvSatRange(val.toFloat());
+            relut = true;
+        }
+        snprintf( sldName, nameLen,"Val Min %d",i+1);
+        if( pixymonParameterChanged(sldName, &val)){
+            m_blobs->m_clut.m_expSigs[i].setHsvValMin(val.toFloat());
+            relut = true;
+        }
+        snprintf( sldName, nameLen,"Val Max %d",i+1);
+        if( pixymonParameterChanged(sldName, &val)){
+            m_blobs->m_clut.m_expSigs[i].setHsvValMax(val.toFloat());
+            relut = true;
+        }
     }
 
     if (relut)
@@ -245,18 +440,29 @@ next:
     g1 = line[x-1];
     g2 = line[x-width];
     b = line[x-width-1];
-    u = r-g1;
-    v = b-g2;
-    ysum += r + (g1+g2)/2 + b;
-    usum += u;
-    vsum += v;
+    if(m_blobs->m_clut.m_useExpSigs){
+        usum = r;
+        vsum = (g1+g2);
+        ysum = b;
+        int16_t g=(g1+g2)/2;
+        int16_t u,v;
+        ColorLutCalculatorExp::calcUV( r,g,b, u,v);
+        index = (v<<CL_LUT_COMPONENT_SCALE) | u;
+        sig = m_lutExp[index];
+    }else{
+        u = r-g1;
+        v = b-g2;
+        ysum += r + (g1+g2)/2 + b;
+        usum += u;
+        vsum += v;
+        u0 = u>>(9-CL_LUT_COMPONENT_SCALE);
+        v0 = v>>(9-CL_LUT_COMPONENT_SCALE);
+        u0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+        v0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+        index = (u0<<CL_LUT_COMPONENT_SCALE) | v0;
+        sig = m_lut[index];
+    }
 
-    u0 = u>>(9-CL_LUT_COMPONENT_SCALE);
-    v0 = v>>(9-CL_LUT_COMPONENT_SCALE);
-    u0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-    v0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-    index = (u0<<CL_LUT_COMPONENT_SCALE) | v0;
-    sig = m_lut[index];
 
     x += 2;
     if (x>=width)
@@ -269,30 +475,44 @@ next:
     g1 = line[x-1];
     g2 = line[x-width];
     b = line[x-width-1];
-    u = r-g1;
-    v = b-g2;
-    ysum += r + (g1+g2)/2 + b;
-    usum += u;
-    vsum += v;
+    if(m_blobs->m_clut.m_useExpSigs){
+        usum += r;
+        vsum += (g1+g2);
+        ysum += b;
+        int16_t g=(g1+g2)/2;
+        int16_t u,v;
+        ColorLutCalculatorExp::calcUV( r,g,b, u,v);
+        index = (v<<CL_LUT_COMPONENT_SCALE) | u;
+        sig2 = m_lutExp[index];
+    }else{
+        u = r-g1;
+        v = b-g2;
+        ysum += r + (g1+g2)/2 + b;
+        usum += u;
+        vsum += v;
+        u0 = u>>(9-CL_LUT_COMPONENT_SCALE);
+        v0 = v>>(9-CL_LUT_COMPONENT_SCALE);
+        u0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+        v0 &=(1<<CL_LUT_COMPONENT_SCALE)-1;
+        index = (u0<<CL_LUT_COMPONENT_SCALE) | v0;
+        sig2 = m_lut[index];
+    }
 
-    u0 = u>>(9-CL_LUT_COMPONENT_SCALE);
-    v0 = v>>(9-CL_LUT_COMPONENT_SCALE);
-    u0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-    v0 &=(1<<CL_LUT_COMPONENT_SCALE)-1;
-    index = (u0<<CL_LUT_COMPONENT_SCALE) | v0;
-    sig2 = m_lut[index];
 
     x += 2;
     if (x>=width)
         return;
 
-    if (sig==sig2)
+    bool ok = m_blobs->m_clut.m_useExpSigs ? (sig&sig2)!=0 : sig==sig2;
+    if (ok)
         goto save;
 
     goto next;
 
 save:
-    Qval qval(usum, vsum, ysum, (x/2<<3) | sig);
+    uint8_t shft = m_blobs->m_clut.m_useExpSigs ? 7 : 3;
+    if(m_blobs->m_clut.m_useExpSigs)sig&=sig2; // remove signatures that are not set in both bitmaps, the condition isn't really needed
+    Qval qval(usum, vsum, ysum, (x/2<<shft) | sig);
     m_qq->enqueue(&qval);
     x += 2;
     if (x>=width)

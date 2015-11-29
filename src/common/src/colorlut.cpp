@@ -22,7 +22,7 @@
 #include "colorlut.h"
 #include "calc.h"
 
-
+bool g_logExp = true;
 
 IterPixel::IterPixel(const Frame8 &frame, const RectA &region)
 {
@@ -96,34 +96,33 @@ bool IterPixel::nextHelper(UVPixel *uv, RGBPixel *rgb)
         g1 = m_pixels[m_x - 1];
         g2 = m_pixels[-m_frame.m_width + m_x];
         b = m_pixels[-m_frame.m_width + m_x - 1];
-		if (rgb)
-		{
-		  	rgb->m_r = r;
-			rgb->m_g = (g1+g2)/2;
-			rgb->m_b = b;
-		}
-		if (uv)
-		{
-        	c = r+g1+b;
+        if (rgb)
+        {
+            rgb->m_r = r;
+            rgb->m_g = (g1+g2)/2;
+            rgb->m_b = b;
+        }
+        if (uv)
+        {
+            c = r+g1+b;
             if (c<miny)
-			{
-				m_x += 2;
-            	continue;
-			}
-        	u = ((r-g1)<<CL_LUT_ENTRY_SCALE)/c;
-        	c = r+g2+b;
+            {
+                m_x += 2;
+                continue;
+            }
+            u = ((r-g1)<<CL_LUT_ENTRY_SCALE)/c;
+            c = r+g2+b;
             if (c<miny)
-			{
-				m_x += 2;
-            	continue;
-			}
-        	v = ((b-g2)<<CL_LUT_ENTRY_SCALE)/c;
+            {
+                m_x += 2;
+                continue;
+            }
+            v = ((b-g2)<<CL_LUT_ENTRY_SCALE)/c;
 
-        	uv->m_u = u;
-        	uv->m_v = v;
-		}
-
-		m_x += 2;
+            uv->m_u = u;
+            uv->m_v = v;
+        }
+        m_x += 2;
         return true;
     }
 }
@@ -149,13 +148,16 @@ uint32_t IterPixel::averageRgb(uint32_t *pixels)
 	return (r<<16) | (g<<8) | b;
 }
 
-ColorLUT::ColorLUT(uint8_t *lut)
+ColorLUT::ColorLUT(uint8_t *lut, uint8_t *lutExp)
 {
 	int i; 
     m_lut = lut;
+    m_lutExp = lutExp;
+    m_useExpSigs = false;
     memset((void *)m_signatures, 0, sizeof(ColorSignature)*CL_NUM_SIGNATURES);
     memset((void *)m_runtimeSigs, 0, sizeof(RuntimeSignature)*CL_NUM_SIGNATURES);
-	clearLUT();
+    for(int i=0; i<CL_NUM_SIGNATURES; ++i) m_expSigs[i] = ExperimentalSignature();
+    clearLUT();
 
     setMinBrightness(CL_DEFAULT_MINY);
     m_minRatio = CL_MIN_RATIO;
@@ -164,6 +166,8 @@ ColorLUT::ColorLUT(uint8_t *lut)
     m_ccGain = CL_DEFAULT_CCGAIN;
 	for (i=0; i<CL_NUM_SIGNATURES; i++)
 		m_sigRanges[i] = CL_DEFAULT_SIG_RANGE;
+
+    ColorLutCalculatorExp::setupDivLut();
 }
 
 
@@ -305,14 +309,39 @@ void ColorLUT::iterate(IterPixel *ip, ColorSignature *sig)
 
 int ColorLUT::generateSignature(const Frame8 &frame, const RectA &region, uint8_t signum)
 {
- 	if (signum<1 || signum>CL_NUM_SIGNATURES)
-		return -1;
-   // this is cool-- this routine doesn't allocate any extra memory other than some stack variables
+    if (signum<1 || signum>CL_NUM_SIGNATURES)
+        return -1;
+
+
+
+    // this is cool-- this routine doesn't allocate any extra memory other than some stack variables
     IterPixel ip(frame, region);
     iterate(&ip, m_signatures+signum-1);
-	m_signatures[signum-1].m_type = 0;
+    m_signatures[signum-1].m_type = 0;
 
-	updateSignature(signum);
+    ip.reset();
+    m_expSigs[signum-1].init( ip);
+
+
+    // set the cooked render mode filter pass indication highlight color
+    uint32_t rm=0, gm=0, bm=0;
+    RGBPixel rgbPix;
+    int cnt=0;
+    ip.reset();
+    while(ip.next( 0 ,&rgbPix)){
+        rm+=rgbPix.m_r;
+        gm+=rgbPix.m_g;
+        bm+=rgbPix.m_b;
+        ++cnt;
+    }
+    rm/=cnt;
+    gm/=cnt;
+    bm/=cnt;
+    EXPLOG("hghlght %d => %d %d %d", cnt, rm, gm, bm);
+    m_signatures[signum-1].m_rgb = rgbPack( rm, gm, bm);
+
+    updateSignature(signum);
+
     return 0;
 }
 
@@ -327,7 +356,8 @@ int ColorLUT::generateSignature(const Frame8 &frame, const Point16 &point, Point
     iterate(&ip, m_signatures+signum-1);
 	m_signatures[signum-1].m_type = 0;
 
-	updateSignature(signum);
+    updateSignature(signum);
+
     return 0;
 }
 
@@ -372,9 +402,58 @@ int ColorLUT::setSignature(uint8_t signum, const ColorSignature &sig)
 
 int ColorLUT::generateLUT()
 {
-    int32_t r, g, b, u, v, y, bin, sig;
+    int collisionsClassic = 0;
+    int collisionsExp = 0;
 
     clearLUT();
+    {
+        // check which signatures are active and set the experimental one accordingly
+        // evillive ... kind of ugly doing this here
+        for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s)
+            if(m_expSigs[s].isActive()) m_expSigs[s].setIsActive( m_signatures[s].m_uMin!=0 || m_signatures[s].m_uMax!=0);
+
+        // loop with sufficient granularity thru rgb space
+        const int16_t stepSz = 3; // 255%3=0 !
+
+        for( int16_t r=0; r<=255; r+=stepSz){
+            for( int16_t g=0; g<=255; g+=stepSz){
+                for( int16_t b=0; b<=255; b+=stepSz){
+                    // determine the most probable signature by comparing distances in the u/v plane
+                    float dstMin = 23.0;
+                    uint8_t bestSigId = 0;
+                    for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s){
+                        // check signature compatibility and calc the distance in the (u,v) plane
+                        float u,v;
+                        const ExperimentalSignature& sig = m_expSigs[s];
+                        if( sig.isRgbAccepted(r,g,b, u,v)){
+                            float du = u-sig.uMed();
+                            float dv = v-sig.vMed();
+                            float dst = sqrt(du*du+dv*dv);
+                            if(dst<dstMin){
+                                dstMin=dst;
+                                bestSigId=s+1;
+                            }
+                        }
+                    }
+                    // calc the (u,v) position in the color LUT ...
+                    if(bestSigId){
+                        int16_t ui,vi;
+                        ColorLutCalculatorExp::calcUV( r,g,b, ui,vi);
+                        // ... and store a 7bit bitmap of compatible signatures in there
+                        // Usually not more than one bit should should be set,
+                        // but nearby signatures might overlap due to the non perfect
+                        // division approximation used in the M0 preselection (u,v) caculation.
+                        // Those collisions are re-checked in the final filter step performed on the M4
+                        int lutIdx = (vi<<CL_LUT_COMPONENT_SCALE) | ui;
+                        if(m_lutExp[lutIdx] & ~(1<<(bestSigId-1))) ++collisionsExp;
+                        m_lutExp[lutIdx] |= 1<<(bestSigId-1);
+                    }
+                }
+            }
+        }
+    }
+
+    int32_t r, g, b, u, v, y, bin, sig;
 
     // recalc bounds for each signature
     for (r=0; r<CL_NUM_SIGNATURES; r++)
@@ -400,24 +479,51 @@ int ColorLUT::generateLUT()
                     if ((m_runtimeSigs[sig].m_uMin<u) && (u<m_runtimeSigs[sig].m_uMax) &&
                             (m_runtimeSigs[sig].m_vMin<v) && (v<m_runtimeSigs[sig].m_vMax))
                     {
-                        u = r-g;
+                        int32_t u = r-g; // evillive see below (made this local to get a reliable collision count)
                         u >>= 9-CL_LUT_COMPONENT_SCALE;
                         u &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-                        v = b-g;
+                        int32_t v = b-g; // evillive see below (made this local to get a reliable collision count)
                         v >>= 9-CL_LUT_COMPONENT_SCALE;
                         v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
 
                         bin = (u<<CL_LUT_COMPONENT_SCALE)+ v;
 
+                        if(m_lut[bin] && m_lut[bin]!=sig+1 ) ++collisionsClassic;
+
                         if (m_lut[bin]==0 || m_lut[bin]>sig+1)
                             m_lut[bin] = sig+1;
+                        // evillive: overwriting u and v and not bailing out of the loop here
+                        // is either a bug or an ELO 2000+ design i don't understand.
+                        // Not absolutely sure, but I think it doesn't harm.
                     }
                 }
             }
         }
     }
 
+    EXPLOG("Classic LUT Dump (collisions=%d)", collisionsClassic );
+    printLUT(m_lut);
+    EXPLOG("Exp LUT Dump (collisions=%d)", collisionsExp );
+    printLUT(m_lutExp);
+
     return 0;
+}
+
+void ColorLUT::printLUT(uint8_t *lut) const
+{
+    const int sz = (1<<CL_LUT_COMPONENT_SCALE);
+    const int strLen = sz*2+1;
+    char str[strLen];
+    for(int v=0; v<sz; ++v){
+        unsigned int pos=0;
+        for(int u=0; u<sz; ++u){
+            if(lut[(sz-v-1)*sz+u])
+                pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "%2X", lut[(sz-v-1)*sz+u]);
+            else
+                pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "..");
+        }
+        EXPLOG(str);
+    }
 }
 
 
@@ -431,6 +537,13 @@ void ColorLUT::clearLUT(uint8_t signum)
             m_lut[i] = 0;
         else if (m_lut[i]==signum)
             m_lut[i] = 0;
+    }
+    for (i=0; i<CL_LUT_SIZE; i++)
+    {
+        if (signum==0)
+            m_lutExp[i] = 0;
+        else
+            m_lutExp[i] &= ~(1<<(signum-1));
     }
 }
 
@@ -698,3 +811,116 @@ uint32_t ColorLUT::getColor(uint8_t signum)
         return 0;
 }
 #endif
+
+
+
+
+uint8_t ColorLutCalculatorExp::s_divLut[256];
+
+void ColorLutCalculatorExp::calcUV(int16_t r, int16_t g, int16_t b, int16_t &u, int16_t &v)
+{
+    // Approximate classic YUV luminance Y and boost to maximum range that fits into int16
+    // 2:4:1 isn't a that bad approximation of 0.299:0.587:0.114
+    uint8_t rs=5;
+    uint8_t gs=6;
+    uint8_t bs=4;
+    int16_t y = (r<<rs) + (g<<gs) + (b<<bs);
+
+    // Extend the r and b ranges accordingly
+    // Do similar shifting as above as the LPC43xx's M0 doesn't support fast multiplication
+    int16_t re = (r<<rs) + (r<<gs) + (r<<bs);  // r16*(32+64+16)=r16*112
+    int16_t be = (b<<rs) + (b<<gs) + (b<<bs);
+
+    // Calculate classic YUV chrominance values	u and v
+    u = be-y;
+    v = re-y;
+
+    // tune the chroma vals to correct a bit the weight approximation errors above
+    // and - more important - to cover as many bins of the LUT as possible
+    u += (u>>3)+(u>>6);
+    v += (v>>2)+(v>>4)+(v>>5)+(v>>6);
+
+    // "Normalize" the chroma vals to the maximum of the rgb vals
+    // This moves u/v vals of the gloomy but well saturated pixels from
+    // the center to the bright edges of uv-plane, leaving only the low
+    // saturated (gloomy and bright) in the center region.
+    // first get the maximum of rgb ...
+    short rgbm = r;
+    if(g>rgbm) rgbm=g;
+    if(b>rgbm) rgbm=b;
+
+    // ... and approximate the division u/rgbm and v/rgbm
+    // As division is even slower than multiplication
+    // Thus do the following shift/add/shift approximation instead of a real division
+    // shift values are taken from a look up table
+    uint8_t lut = s_divLut[rgbm];
+    uint8_t s1 = lut&0xf;
+    if(s1){
+        u += u>>s1;
+        v += v>>s1;
+    }
+    uint8_t s2 = lut>>4;
+    u >>= s2;
+    v >>= s2;
+
+    // first make them positive by a simple add
+    // ... same number of cycles but less headache than the original shift method
+    u += 1<<(CL_LUT_COMPONENT_SCALE-1);
+    v += 1<<(CL_LUT_COMPONENT_SCALE-1);
+
+    // a final range check that should always pass ... evillive could be removed (?)
+    const int16_t rangeMask = (1<<CL_LUT_COMPONENT_SCALE)-1;
+    if( u & ~rangeMask || v & ~rangeMask ) EXPLOG("Exp LUT fail %d %d %d %i %i", r,g,b,u,v);
+    // but be defensive and limit u,v to the allowed range
+    u &= rangeMask;
+    v &= rangeMask;
+}
+
+void ColorLutCalculatorExp::setupDivLut()
+{
+    // Has been tweaked! Now it divides by b<<2
+    // to get directly within the range of the color LUT
+    const int16_t tweak = 8-CL_LUT_COMPONENT_SCALE;
+
+    // A magic reference nominator seed for error estimation
+    const int16_t nomi = 11614;
+    s_divLut[0]=0xf0;  // x/0=0
+    s_divLut[1]=(tweak<<4);
+
+    float maxErr=0.0f;
+    for(int16_t dnomi=2; dnomi<256; ++dnomi){ // loop through all denominators
+
+        float refQ = float(nomi) / (dnomi<<tweak); // the "exact" result
+        uint8_t msb = 1;
+        while(dnomi>>msb) ++msb;	// pos of most significant denominator bit, used as loop limit below
+        uint8_t s1MinErr = 0;       // stores first and second shift
+        uint8_t s2MinErr = 0;       // for the
+        float minErr = 23.0f;		// lowest quotient error found so far
+        //int16_t qMinErr = 0; // just debug stuff
+
+        // loop through reasonable bit shift distances
+        // and search for the combination with the lowest quotient approximation error
+        for(uint8_t s2=msb-1; s2<=msb+1+tweak; ++s2){
+            for(uint8_t s1=0; s1<8; ++s1){
+
+                int16_t apprxQ = nomi;
+                if(s1) apprxQ += (nomi>>s1);
+                apprxQ >>= s2;
+
+                float err = fabs(apprxQ/refQ-1.0f);
+                if(err<minErr){
+                    minErr = err;
+                    s1MinErr = s1;
+                    s2MinErr = s2;
+                    //qMinErr = apprxQ;
+                }
+            }
+        }
+        // store the best s1/s2 combination to the LUT
+        s_divLut[dnomi]=s1MinErr |(s2MinErr<<4);
+
+        //printf("%3u %2u %u %2x %5i %5.1f %2.1f%% %3.0f\n", dnomi, s1MinErr, s2MinErr, divLUT[dnomi], qMinErr, refQ, minErr*100.0f, qMinErr-refQ);
+        if(minErr>maxErr)maxErr=minErr;
+    }
+    EXPLOG("Division LUT: seed=%u err=%.1f%%",nomi,maxErr*100.0f);
+}

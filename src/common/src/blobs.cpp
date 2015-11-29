@@ -23,7 +23,7 @@
 
 #define CC_SIGNATURE(s) (m_ccMode==CC_ONLY || m_clut.getType(s)==CL_MODEL_TYPE_COLORCODE)
 
-Blobs::Blobs(Qqueue *qq, uint8_t *lut) : m_clut(lut)
+Blobs::Blobs(Qqueue *qq, uint8_t *lut, uint8_t *lutExp) : m_clut( lut, lutExp)
 {
     int i;
 
@@ -112,6 +112,12 @@ int Blobs::runlengthAnalysis()
     int32_t res=0;
 	register int32_t u, v, c;
 
+    // log LUT preselection performance
+    const uint32_t lutSel_nFrms = 100;
+    static uint32_t lutSel_allCnt = 0;
+    static uint32_t lutSel_koCnt = 0;
+    static uint32_t lutSel_frmCnt = 0;
+
 #ifndef PIXY
     m_numQvals = 0;
 #endif
@@ -145,21 +151,76 @@ int Blobs::runlengthAnalysis()
             continue;
         }
 
-        sig = qval.m_col&0x07;
+        bool qvalAccepted = false;
 
-        u = qval.m_u;
-        v = qval.m_v;
+        if(m_clut.m_useExpSigs)
+        {
+            // decode the M0 preselected signature id bitmap
+            uint8_t sigBitMap = qval.m_col & ((1<<CL_NUM_SIGNATURES)-1);
 
-        u <<= CL_LUT_ENTRY_SCALE;
-        v <<= CL_LUT_ENTRY_SCALE;
-        c = qval.m_y;
-        if (c==0)
-            c = 1;
-        u /= c;
-        v /= c;
+            // decode r, g and b
+            int16_t r = qval.m_u>>1;
+            int16_t g = qval.m_v>>2;
+            int16_t b = qval.m_y>>1;
 
-        if (m_clut.m_runtimeSigs[sig-1].m_uMin<u && u<m_clut.m_runtimeSigs[sig-1].m_uMax &&
-                m_clut.m_runtimeSigs[sig-1].m_vMin<v && v<m_clut.m_runtimeSigs[sig-1].m_vMax && c>=(int32_t)m_clut.m_miny)
+            // determine the most probable signature by comparing distances in the (u,v) plane
+            float dstMin = 23.0;
+            uint8_t bestSigId = 0;
+            uint8_t sigId = 0;
+            while(sigBitMap){
+
+                // fetch next signature ID from the  bitmap
+                while( (sigBitMap&1)==0 ){
+                    sigBitMap>>=1;
+                    ++sigId;
+                }
+                sigBitMap>>=1;
+                ++sigId;
+
+                // check signature compatibility and calc the distance in the (u,v) plane
+                float u,v;
+                const ExperimentalSignature& es = m_clut.m_expSigs[sigId-1];
+                if( es.isRgbAccepted(r,g,b, u,v)){
+                    float du = u-es.uMed();
+                    float dv = v-es.vMed();
+                    float dst = sqrt( du*du + dv*dv);
+                    if(dst<dstMin){
+                        dstMin=dst;
+                        bestSigId=sigId;
+                    }
+                }
+            }
+            // set signature id and shift m_col as expected by the original code
+            // that shifts it 3 bit further to decode the pixel's x position
+            sig = bestSigId;
+            qvalAccepted = (sig!=0);
+            qval.m_col >>= 4;
+        }
+        else
+        {
+            sig = qval.m_col&0x07;
+
+            u = qval.m_u;
+            v = qval.m_v;
+
+            u <<= CL_LUT_ENTRY_SCALE;
+            v <<= CL_LUT_ENTRY_SCALE;
+            c = qval.m_y;
+            if (c==0)
+                c = 1;
+            u /= c;
+            v /= c;
+
+            qvalAccepted = m_clut.m_runtimeSigs[sig-1].m_uMin<u && u<m_clut.m_runtimeSigs[sig-1].m_uMax &&
+                           m_clut.m_runtimeSigs[sig-1].m_vMin<v && v<m_clut.m_runtimeSigs[sig-1].m_vMax &&
+                           c>=(int32_t)m_clut.m_miny;
+        }
+
+        // log LUT preselection performance
+        ++lutSel_allCnt;
+        if(!qvalAccepted) ++lutSel_koCnt;
+
+        if (qvalAccepted)
         {
          	qval.m_col >>= 3;
         	startCol = qval.m_col;
@@ -189,6 +250,12 @@ int Blobs::runlengthAnalysis()
         }
     }
 	endFrame();
+
+    // log LUT preselection performance
+    if(++lutSel_frmCnt>=lutSel_nFrms){
+        EXPLOG("LUT pre-selected/frame %u %.1f%% false pos", lutSel_allCnt/lutSel_nFrms, float(lutSel_koCnt)/lutSel_allCnt*100.0f);
+        lutSel_allCnt = lutSel_koCnt = lutSel_frmCnt = 0;
+    }
 
     if (qval.m_col==0xfffe) // error code, queue overrun
 		return -1;
