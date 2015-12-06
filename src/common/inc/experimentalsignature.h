@@ -6,14 +6,14 @@
 class IterPixel;
 
 // some constants
- const float rgbNorm = 1.0 / 255.0;
- const float yuv_wr = 0.299;
- const float yuv_wb = 0.114;
- const float yuv_wg = 1.0 - yuv_wr - yuv_wb;
- const float yuv_un = 1.0/(1.0-yuv_wb);
- const float yuv_vn = 1.0/(1.0-yuv_wr);
+const float rgbNorm = 1.0f / 255.0f;
+const float yuv_wr = 0.299f;
+const float yuv_wb = 0.114f;
+const float yuv_wg = 1.0f - yuv_wr - yuv_wb;
+const float yuv_un = 1.0f/(1.0f-yuv_wb);
+const float yuv_vn = 1.0f/(1.0f-yuv_wr);
 // something small for float comparisons
- const float bite = 1e-6;
+const float bite = 1e-6f;
 
 /// experimental signatures
 /// the signature's color model related stuff
@@ -39,6 +39,8 @@ public:
     void init( IterPixel& pixIter );
 
     /// a helper that calculates the u and v chroma valus from the given rgb vector
+    /// u[-1..1],v[-1..1],sat[0..1] and val [0..1]
+    /// r,g,b [0.0,1.0]
     void calcUV(float r, float g, float b, float& u, float& v, float& hsvSat, float& hsvVal) const;
 
     /// same as above, but with integer r, g and b parameters [0..255]

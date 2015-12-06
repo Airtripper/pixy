@@ -106,7 +106,6 @@ public:
 	int setSignature(uint8_t signum, const ColorSignature &sig);
 
     int generateLUT();
-    void printLUT(uint8_t* lut) const;
 
     void clearLUT(uint8_t signum=0);
 	void updateSignature(uint8_t signum);

@@ -112,11 +112,13 @@ int Blobs::runlengthAnalysis()
     int32_t res=0;
 	register int32_t u, v, c;
 
+#indef PIXY
     // log LUT preselection performance
     const uint32_t lutSel_nFrms = 100;
     static uint32_t lutSel_allCnt = 0;
     static uint32_t lutSel_koCnt = 0;
     static uint32_t lutSel_frmCnt = 0;
+#endif
 
 #ifndef PIXY
     m_numQvals = 0;
@@ -153,15 +155,21 @@ int Blobs::runlengthAnalysis()
 
         bool qvalAccepted = false;
 
+        // decode the M0 preselected signature id bitmap
+        uint8_t sigBitMap = qval.m_col & ((1<<CL_NUM_SIGNATURES)-1);
+
         if(m_clut.m_useExpSigs)
         {
-            // decode the M0 preselected signature id bitmap
-            uint8_t sigBitMap = qval.m_col & ((1<<CL_NUM_SIGNATURES)-1);
-
-            // decode r, g and b
-            int16_t r = qval.m_u>>1;
-            int16_t g = qval.m_v>>2;
-            int16_t b = qval.m_y>>1;
+            // decode r, g and b from the 2-pixel sum of
+            // u=r-g, v=b-g and y=r+g+b
+            // => g=(y-u-v)/3, r=u+g and b=v+g
+            float g = qval.m_y - qval.m_u - qval.m_v;
+            g*=0.3333333f;
+            float r = float(qval.m_u) + g;
+            r*=rgbNorm;
+            float b = float(qval.m_v) + g;
+            b*=rgbNorm;
+            g*=rgbNorm;
 
             // determine the most probable signature by comparing distances in the (u,v) plane
             float dstMin = 23.0;
@@ -194,11 +202,16 @@ int Blobs::runlengthAnalysis()
             // that shifts it 3 bit further to decode the pixel's x position
             sig = bestSigId;
             qvalAccepted = (sig!=0);
-            qval.m_col >>= 4;
         }
         else
         {
-            sig = qval.m_col&0x07;
+            // fetch signature ID from the  bitmap
+            // use __CLZ(uint32_t) on the M4?
+            sig=1;
+            while( (sigBitMap&1)==0 ){
+                sigBitMap>>=1;
+                ++sig;
+            }
 
             u = qval.m_u;
             v = qval.m_v;
@@ -222,7 +235,7 @@ int Blobs::runlengthAnalysis()
 
         if (qvalAccepted)
         {
-         	qval.m_col >>= 3;
+            qval.m_col >>= 7;
         	startCol = qval.m_col;
            	merge = startCol-prevStartCol<=5 && prevSig==sig;
             if (segmentSig==0 && merge)

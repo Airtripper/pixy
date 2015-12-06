@@ -267,6 +267,8 @@ void ColorLUT::calcRatios(IterPixel *ip, ColorSignature *sig, float ratios[])
     ratios[2] = (float)counts[2]/n;
     ratios[3] = (float)counts[3]/n;
     // calc mean (because it's cheap to do it here)
+    // the mean would be quite touchy to outliers
+    // thus take the middle of the 80% limits.
     sig->m_uMean = (sig->m_uMin + sig->m_uMax)/2;
     sig->m_vMean = (sig->m_vMin + sig->m_vMax)/2;
 }
@@ -402,11 +404,10 @@ int ColorLUT::setSignature(uint8_t signum, const ColorSignature &sig)
 
 int ColorLUT::generateLUT()
 {
-    int collisionsClassic = 0;
-    int collisionsExp = 0;
+    int collisions = 0;
 
     clearLUT();
-    {
+    if(m_useExpSigs){
         // check which signatures are active and set the experimental one accordingly
         // evillive ... kind of ugly doing this here
         for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s)
@@ -437,93 +438,110 @@ int ColorLUT::generateLUT()
                     }
                     // calc the (u,v) position in the color LUT ...
                     if(bestSigId){
-                        int16_t ui,vi;
-                        ColorLutCalculatorExp::calcUV( r,g,b, ui,vi);
-                        // ... and store a 7bit bitmap of compatible signatures in there
-                        // Usually not more than one bit should should be set,
-                        // but nearby signatures might overlap due to the non perfect
-                        // division approximation used in the M0 preselection (u,v) caculation.
-                        // Those collisions are re-checked in the final filter step performed on the M4
-                        int lutIdx = (vi<<CL_LUT_COMPONENT_SCALE) | ui;
-                        if(m_lutExp[lutIdx] & ~(1<<(bestSigId-1))) ++collisionsExp;
-                        m_lutExp[lutIdx] |= 1<<(bestSigId-1);
+#ifndef PIXY
+                        if( m_useExpLUT ){
+                            int16_t ui,vi;
+                            ColorLutCalculatorExp::calcUV( r,g,b, ui,vi);
+                            // ... and store a 7bit bitmap of compatible signatures in there
+                            // Usually not more than one bit should should be set,
+                            // but nearby signatures might overlap due to the non perfect
+                            // division approximation used in the M0 preselection (u,v) caculation.
+                            // Those collisions are re-checked in the final filter step performed on the M4
+                            int32_t lutIdx = (vi<<CL_LUT_COMPONENT_SCALE) | ui; // alternative LUT arrangement that can be visualized, see ColorLutCalculatorExp::calcUV
+                            if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
+                            m_lut[lutIdx] |= 1<<(bestSigId-1);
+                        }else
+#endif
+                        {
+                            int32_t u = r-g;
+                            u >>= 9-CL_LUT_COMPONENT_SCALE;
+                            u &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+                            int32_t v = b-g;
+                            v >>= 9-CL_LUT_COMPONENT_SCALE;
+                            v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+                            int32_t lutIdx = (u<<CL_LUT_COMPONENT_SCALE)+ v;
+
+                            if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
+                            m_lut[lutIdx] |= 1<<(bestSigId-1);
+                        }
                     }
                 }
             }
         }
     }
-
-    int32_t r, g, b, u, v, y, bin, sig;
-
-    // recalc bounds for each signature
-    for (r=0; r<CL_NUM_SIGNATURES; r++)
-        updateSignature(r+1);
-
-    for (r=0; r<1<<8; r+=1<<(8-CL_LUT_COMPONENT_SCALE))
+    else
     {
-        for (g=0; g<1<<8; g+=1<<(8-CL_LUT_COMPONENT_SCALE))
+        int32_t r, g, b, u, v, y, bin, sig;
+
+        // recalc bounds for each signature
+        for (r=0; r<CL_NUM_SIGNATURES; r++)
+            updateSignature(r+1);
+
+        for (r=0; r<1<<8; r+=1<<(8-CL_LUT_COMPONENT_SCALE))
         {
-            for (b=0; b<1<<8; b+=1<<(8-CL_LUT_COMPONENT_SCALE))
+            for (g=0; g<1<<8; g+=1<<(8-CL_LUT_COMPONENT_SCALE))
             {
-                y = r+g+b;
-
-                if (y<(int32_t)m_miny)
-                    continue;
-                u = ((r-g)<<CL_LUT_ENTRY_SCALE)/y;
-                v = ((b-g)<<CL_LUT_ENTRY_SCALE)/y;
-
-                for (sig=0; sig<CL_NUM_SIGNATURES; sig++)
+                for (b=0; b<1<<8; b+=1<<(8-CL_LUT_COMPONENT_SCALE))
                 {
-                    if (m_signatures[sig].m_uMin==0 && m_signatures[sig].m_uMax==0)
+                    y = r+g+b;
+
+                    if (y<(int32_t)m_miny)
                         continue;
-                    if ((m_runtimeSigs[sig].m_uMin<u) && (u<m_runtimeSigs[sig].m_uMax) &&
-                            (m_runtimeSigs[sig].m_vMin<v) && (v<m_runtimeSigs[sig].m_vMax))
+                    u = ((r-g)<<CL_LUT_ENTRY_SCALE)/y;
+                    v = ((b-g)<<CL_LUT_ENTRY_SCALE)/y;
+
+                    for (sig=0; sig<CL_NUM_SIGNATURES; sig++)
                     {
-                        int32_t u = r-g; // evillive see below (made this local to get a reliable collision count)
-                        u >>= 9-CL_LUT_COMPONENT_SCALE;
-                        u &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-                        int32_t v = b-g; // evillive see below (made this local to get a reliable collision count)
-                        v >>= 9-CL_LUT_COMPONENT_SCALE;
-                        v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+                        if (m_signatures[sig].m_uMin==0 && m_signatures[sig].m_uMax==0)
+                            continue;
+                        if ((m_runtimeSigs[sig].m_uMin<u) && (u<m_runtimeSigs[sig].m_uMax) &&
+                                (m_runtimeSigs[sig].m_vMin<v) && (v<m_runtimeSigs[sig].m_vMax))
+                        {
+                            int32_t u = r-g; // evillive see below (made this local to get a reliable collision count)
+                            u >>= 9-CL_LUT_COMPONENT_SCALE;
+                            u &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+                            int32_t v = b-g; // evillive see below (made this local to get a reliable collision count)
+                            v >>= 9-CL_LUT_COMPONENT_SCALE;
+                            v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
 
-                        bin = (u<<CL_LUT_COMPONENT_SCALE)+ v;
+                            bin = (u<<CL_LUT_COMPONENT_SCALE)+ v;
 
-                        if(m_lut[bin] && m_lut[bin]!=sig+1 ) ++collisionsClassic;
+                            if(m_lut[bin] && m_lut[bin]!=sig+1 ) ++collisions;
 
-                        if (m_lut[bin]==0 || m_lut[bin]>sig+1)
-                            m_lut[bin] = sig+1;
-                        // evillive: overwriting u and v and not bailing out of the loop here
-                        // is either a bug or an ELO 2000+ design i don't understand.
-                        // Not absolutely sure, but I think it doesn't harm.
+                            if (m_lut[bin]==0 || m_lut[bin]>1<<sig){
+                                // lower index signatures have higher prio and kick lower prio signatures out of the LUT
+                                m_lut[bin] = 1<<sig;
+#ifdef PIXY // don't bail out in cooked mode as it would affect the collision counting
+                                break; // bail out here as higher index signatures don't have a chance to get into this LUT entry any more
+#endif
+                            }
+                            // evillive: overwriting u and v and not bailing out of the loop here
+                            // is either a bug or an ELO 2000+ design i don't understand.
+                            // Not absolutely sure, but I think it doesn't harm.
+                        }
                     }
                 }
             }
         }
     }
 
-    EXPLOG("Classic LUT Dump (collisions=%d)", collisionsClassic );
-    printLUT(m_lut);
-    EXPLOG("Exp LUT Dump (collisions=%d)", collisionsExp );
-    printLUT(m_lutExp);
-
-    return 0;
-}
-
-void ColorLUT::printLUT(uint8_t *lut) const
-{
+#ifndef PIXY
+    EXPLOG("LUT Dump (collisions=%d)", collisions);
     const int sz = (1<<CL_LUT_COMPONENT_SCALE);
     const int strLen = sz*2+1;
     char str[strLen];
     for(int v=0; v<sz; ++v){
         unsigned int pos=0;
         for(int u=0; u<sz; ++u){
-            if(lut[(sz-v-1)*sz+u])
-                pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "%2X", lut[(sz-v-1)*sz+u]);
+            if(m_lut[(sz-v-1)*sz+u])
+                pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "%2X", m_lut[(sz-v-1)*sz+u]);
             else
                 pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "..");
         }
         EXPLOG(str);
     }
+#endif
+    return 0;
 }
 
 

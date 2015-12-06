@@ -28,6 +28,7 @@ ExperimentalSignature::ExperimentalSignature():
 ExperimentalSignature::~ExperimentalSignature()
 {}
 
+
 bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, float& v) const
 {
     // The colorspace used in here somehow trial and error evolved from the one

@@ -284,11 +284,9 @@ void CccModule::paramChange()
     int i;
     QVariant val;
     bool relut = false;
-//<<<<disco<<< HEAD
+
     uint32_t palette[CL_NUM_SIGNATURES];
-    /*  don't load signatures from Pixy as we are setting them up within PixyMon
-//===disco====
-//>>>disco>>>> refs/remotes/charmedlabs/master
+
     char id[128];
     uint32_t sigLen;
     uint8_t *sigData;
@@ -309,7 +307,7 @@ void CccModule::paramChange()
             }
         }
     }
-    */
+
     if (pixyParameterChanged("Signature 1 range", &val))
     {
         m_blobs->m_clut.setSigRange(1, val.toFloat());
@@ -356,9 +354,11 @@ void CccModule::paramChange()
         relut = true;
     }
 
+    //hgs->
     m_blobs->m_clut.m_useExpSigs = pixymonParameter("Use exp sigs").toBool();
     g_logExp = pixymonParameter("Logging").toBool();
-
+    //<-hgs
+    // hgs fixme!
     for(int i=0; i<CL_NUM_SIGNATURES;++i){
         const int nameLen = 30;
         char sldName[nameLen];
@@ -440,21 +440,19 @@ next:
     g1 = line[x-1];
     g2 = line[x-width];
     b = line[x-width-1];
-    if(m_blobs->m_clut.m_useExpSigs){
-        usum = r;
-        vsum = (g1+g2);
-        ysum = b;
+    u = r-g1;
+    v = b-g2;
+    ysum += r + (g1+g2)/2 + b;
+    usum += u;
+    vsum += v;
+
+    if(m_blobs->m_clut.m_useExpLUT){
         int16_t g=(g1+g2)/2;
-        int16_t u,v;
-        ColorLutCalculatorExp::calcUV( r,g,b, u,v);
-        index = (v<<CL_LUT_COMPONENT_SCALE) | u;
-        sig = m_lutExp[index];
+        int16_t u0,v0;
+        ColorLutCalculatorExp::calcUV( r,g,b, u0,v0);
+        index = (v0<<CL_LUT_COMPONENT_SCALE) | u0;
+        sig = m_lut[index];
     }else{
-        u = r-g1;
-        v = b-g2;
-        ysum += r + (g1+g2)/2 + b;
-        usum += u;
-        vsum += v;
         u0 = u>>(9-CL_LUT_COMPONENT_SCALE);
         v0 = v>>(9-CL_LUT_COMPONENT_SCALE);
         u0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
@@ -475,21 +473,19 @@ next:
     g1 = line[x-1];
     g2 = line[x-width];
     b = line[x-width-1];
-    if(m_blobs->m_clut.m_useExpSigs){
-        usum += r;
-        vsum += (g1+g2);
-        ysum += b;
+    u = r-g1;
+    v = b-g2;
+    ysum += r + (g1+g2)/2 + b;
+    usum += u;
+    vsum += v;
+
+    if(m_blobs->m_clut.m_useExpLUT){
         int16_t g=(g1+g2)/2;
-        int16_t u,v;
-        ColorLutCalculatorExp::calcUV( r,g,b, u,v);
-        index = (v<<CL_LUT_COMPONENT_SCALE) | u;
-        sig2 = m_lutExp[index];
+        int16_t u0,v0;
+        ColorLutCalculatorExp::calcUV( r,g,b, u0,v0);
+        index = (v0<<CL_LUT_COMPONENT_SCALE) | u0;
+        sig2 = m_lut[index];
     }else{
-        u = r-g1;
-        v = b-g2;
-        ysum += r + (g1+g2)/2 + b;
-        usum += u;
-        vsum += v;
         u0 = u>>(9-CL_LUT_COMPONENT_SCALE);
         v0 = v>>(9-CL_LUT_COMPONENT_SCALE);
         u0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
@@ -503,16 +499,14 @@ next:
     if (x>=width)
         return;
 
-    bool ok = m_blobs->m_clut.m_useExpSigs ? (sig&sig2)!=0 : sig==sig2;
-    if (ok)
+    if ( sig&sig2!=0 )
         goto save;
 
     goto next;
 
 save:
-    uint8_t shft = m_blobs->m_clut.m_useExpSigs ? 7 : 3;
-    if(m_blobs->m_clut.m_useExpSigs)sig&=sig2; // remove signatures that are not set in both bitmaps, the condition isn't really needed
-    Qval qval(usum, vsum, ysum, (x/2<<shft) | sig);
+    if(m_blobs->m_clut.m_useExpSigs)sig&=sig2; // remove signatures that are not set in both bitmaps, check if the condition is really reasonable
+    Qval qval(usum, vsum, ysum, ((x/2)<<7) | sig);
     m_qq->enqueue(&qval);
     x += 2;
     if (x>=width)
