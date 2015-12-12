@@ -45,7 +45,6 @@ private:
 
     uint32_t m_crc;
     uint8_t *m_lut;
-    uint8_t *m_lutExp;
     Qqueue *m_qq;
     Blobs *m_blobs;
     uint8_t m_renderMode;

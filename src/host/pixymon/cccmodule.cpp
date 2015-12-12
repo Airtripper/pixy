@@ -35,8 +35,7 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
     m_crc = 0;
     m_qq = new Qqueue();
     m_lut = new uint8_t[CL_LUT_SIZE];
-    m_lutExp = new uint8_t[CL_LUT_SIZE];
-    m_blobs = new Blobs(m_qq, m_lut, m_lutExp);
+    m_blobs = new Blobs(m_qq, m_lut);
 
     m_interpreter->m_pixymonParameters->addCheckbox("Use exp sigs", m_blobs->m_clut.m_useExpSigs, "Use experimental signatures","expSigs");
     m_interpreter->m_pixymonParameters->addCheckbox("Logging", g_logExp, "Logging","expSigs");
@@ -47,12 +46,14 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
        char sldName[nameLen];
        snprintf( tabName, nameLen,"Sig %d",i+1);
        snprintf( sldName, nameLen,"Hue range %d",i+1);
-       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvHueRange(), -1.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
-       snprintf( sldName, nameLen,"Sat range %d",i+1);
-       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvSatRange(), -1.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
-       snprintf( sldName, nameLen,"Val Min %d",i+1);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvHueRange(), 0.0f, 45.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Sat min %d",i+1);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvSatMin(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Sat max %d",i+1);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvSatMax(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Val min %d",i+1);
        m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvValMin() , 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
-       snprintf( sldName, nameLen,"Val Max %d",i+1);
+       snprintf( sldName, nameLen,"Val max %d",i+1);
        m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvValMax(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
     }
 
@@ -162,7 +163,6 @@ CccModule::~CccModule()
 {
     delete m_blobs;
     delete [] m_lut;
-    delete [] m_lutExp;
     delete m_qq;
 }
 
@@ -285,7 +285,7 @@ void CccModule::paramChange()
     QVariant val;
     bool relut = false;
 
-    uint32_t palette[CL_NUM_SIGNATURES];
+    //uint32_t palette[CL_NUM_SIGNATURES]; // evillive hgs: get rid of unused warning
 
     char id[128];
     uint32_t sigLen;
@@ -368,17 +368,22 @@ void CccModule::paramChange()
             m_blobs->m_clut.m_expSigs[i].setHsvHueRange(val.toFloat());
             relut = true;
         }
-        snprintf( sldName, nameLen,"Sat range %d",i+1);
+        snprintf( sldName, nameLen,"Sat min %d",i+1);
         if( pixymonParameterChanged(sldName, &val)){
-            m_blobs->m_clut.m_expSigs[i].setHsvSatRange(val.toFloat());
+            m_blobs->m_clut.m_expSigs[i].setHsvSatMin(val.toFloat());
             relut = true;
         }
-        snprintf( sldName, nameLen,"Val Min %d",i+1);
+        snprintf( sldName, nameLen,"Sat max %d",i+1);
+        if( pixymonParameterChanged(sldName, &val)){
+            m_blobs->m_clut.m_expSigs[i].setHsvSatMax(val.toFloat());
+            relut = true;
+        }
+        snprintf( sldName, nameLen,"Val min %d",i+1);
         if( pixymonParameterChanged(sldName, &val)){
             m_blobs->m_clut.m_expSigs[i].setHsvValMin(val.toFloat());
             relut = true;
         }
-        snprintf( sldName, nameLen,"Val Max %d",i+1);
+        snprintf( sldName, nameLen,"Val max %d",i+1);
         if( pixymonParameterChanged(sldName, &val)){
             m_blobs->m_clut.m_expSigs[i].setHsvValMax(val.toFloat());
             relut = true;
@@ -446,7 +451,7 @@ next:
     usum += u;
     vsum += v;
 
-    if(m_blobs->m_clut.m_useExpLUT){
+    if(m_blobs->m_clut.m_useExpLut){
         int16_t g=(g1+g2)/2;
         int16_t u0,v0;
         ColorLutCalculatorExp::calcUV( r,g,b, u0,v0);
@@ -479,7 +484,7 @@ next:
     usum += u;
     vsum += v;
 
-    if(m_blobs->m_clut.m_useExpLUT){
+    if(m_blobs->m_clut.m_useExpLut){
         int16_t g=(g1+g2)/2;
         int16_t u0,v0;
         ColorLutCalculatorExp::calcUV( r,g,b, u0,v0);
@@ -489,23 +494,22 @@ next:
         u0 = u>>(9-CL_LUT_COMPONENT_SCALE);
         v0 = v>>(9-CL_LUT_COMPONENT_SCALE);
         u0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-        v0 &=(1<<CL_LUT_COMPONENT_SCALE)-1;
+        v0 &= (1<<CL_LUT_COMPONENT_SCALE)-1;
         index = (u0<<CL_LUT_COMPONENT_SCALE) | v0;
         sig2 = m_lut[index];
     }
-
 
     x += 2;
     if (x>=width)
         return;
 
-    if ( sig&sig2!=0 )
+    if ( (sig&sig2) != 0 )
         goto save;
 
     goto next;
 
 save:
-    if(m_blobs->m_clut.m_useExpSigs)sig&=sig2; // remove signatures that are not set in both bitmaps, check if the condition is really reasonable
+    sig&=sig2; // remove signatures that are not set in both bitmaps
     Qval qval(usum, vsum, ysum, ((x/2)<<7) | sig);
     m_qq->enqueue(&qval);
     x += 2;

@@ -2,27 +2,20 @@
 #include "colorlut.h"  // cyclic due to IterPixel
 
 #include <math.h>
-#include <vector>
-#include <algorithm>
 
 using namespace std;
-
-
 
 ExperimentalSignature::ExperimentalSignature():
     m_isActive(false),
     m_uMed(0.0f),
     m_vMed(0.0f),
-    m_hsvHueRange(0.0f),
-    m_hsvSatRange(0.0f),
-    m_hsvValMin(0.0f),
-    m_hsvValMax(1.0f),
-    m_hsvSatRangeFac(0.0f),
-    m_cosHueRangeFac(0.0f),
     m_hsvSatMed(0.0f),
+    m_hsvValMin(0.2f),
+    m_hsvValMax(1.0f),
+    m_hsvSatMin(0.2f),
+    m_hsvSatMax(1.0f),
     m_hsvCosDeltaHueMin(1.0f),
-    m_hsvSatMin(1.0f),
-    m_hsvSatMax(0.0f)
+    m_hsvHueRange(5.0f)
 {}
 
 ExperimentalSignature::~ExperimentalSignature()
@@ -53,15 +46,27 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     if(b>hsvVal)hsvVal=b;
     if(b<rgbMin)rgbMin=b;
 
+    // might happen, floating point or g1/g2 bayer mess caused
+    if(hsvVal>1.0f){
+        hsvVal=1.0f;
+        //EXPLOG("val ouch");
+    }
+
     // bail out early if not within hsv value limits
     // and a hopefully correct handling for black pixels (division by zero prevention)
     if( hsvVal<m_hsvValMin+bite || hsvVal>m_hsvValMax ){
-        u=v=0;
-        return hsvVal+m_hsvValMin+m_hsvSatMin<bite;
+        u=v=0.0f;
+        return hsvVal+m_hsvValMin+m_hsvSatMin < bite;
     }
 
     float hsvValInv=1.0f/hsvVal;
     float hsvSat = (hsvVal-rgbMin) * hsvValInv;
+
+    // might happen (?), floating point or g1/g2 bayer mess caused
+    if(hsvSat>1.0f){
+        hsvSat=1.0f;
+        //EXPLOG("sat ouch");
+    }
 
     // bail out early if not within hsv saturation limits
     // and a hopefully correct handling for grey pixels (division by zero prevention)
@@ -100,73 +105,97 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
 
 void ExperimentalSignature::init( IterPixel& pixIter)
 {
-    // one empty loop to get the number of pixels
-    size_t sz=0;
+    // approximation of the hue and saturation median
+    // do it with simple histograms
+    // inspired by "Binapprox" algorithm described in
+    // "Fast Computation of the Median by Successive Binning"
+    // Ryan J. Tibshirani, Dept. of Statistics, Stanford University""
+
+    // As calculating mean and sigma of the circular hue
+    // might lead to surprising results, if it's distribution
+    // peaks at the jump from +pi to -pi, we have to rotate
+    // the hue peak into a save region
+    // 1) abuse the histos, used later for hue and saturation, to calculate a mean u and v
+    Histo hueHist( -1.0f, 1.0f);
+    Histo satHist( -1.0f, 1.0f);
     RGBPixel rgbPix;
     pixIter.reset();
-    while(pixIter.next( 0 ,&rgbPix)) ++sz;
+    while(pixIter.next( 0 ,&rgbPix)){
+         float u, v, sat, val;
+         translateRGB( rgbPix.m_r,rgbPix.m_g,rgbPix.m_b,  u, v, sat, val );
+         hueHist.add( u);
+         satHist.add( v);
+    }
+    float uMean = hueHist.mean();
+    float vMean = satHist.mean();
 
-    // fill two vectors with all u and v values
-    // Guess the M4 will have a memory problem here
-    // Maybe the binary search in the ColorLUT "iterate" chain can be abused to calculate the medians
-    std::vector<float> uVec(sz);
-    std::vector<float> vVec(sz);
-    size_t pos=0;
+    // calculate the polar angle of the mean (u,v) vector
+    float hueOff = fabs(uMean)>bite && fabs(vMean)>bite ? atan2(vMean,uMean) : 0.0f;
+
+    // now analyse the saturation and hue distribution
+    // hue is rotated by hueOff to the center of the histo before
+    hueHist.reset( -pi, pi);
+    satHist.reset( 0.0f, 1.0f);
     pixIter.reset();
     while(pixIter.next( 0 ,&rgbPix)){
-         float hsvSat, hsvVal;
-         calcUV( (int16_t)rgbPix.m_r , (int16_t)rgbPix.m_g, (int16_t)rgbPix.m_b, uVec[pos], vVec[pos], hsvSat, hsvVal );
-         ++pos;
+         float u, v, sat, val;
+         translateRGB( rgbPix.m_r,rgbPix.m_g,rgbPix.m_b,  u, v, sat, val );
+         float hue0 = sat>bite ?  atan2(v,u) : 0.0f;
+         hue0-=hueOff;
+         if(hue0<-pi)hue0+=2.0f*pi;
+         else if(hue0>pi)hue0-=2.0f*pi;
+         hueHist.add( hue0);
+         satHist.add( sat);
     }
-    // calc the u and v median, don't care if sz is odd or even
-    size_t half = sz/2;
-    std::nth_element( uVec.begin(), uVec.begin()+half, uVec.end());
-    m_uMed = uVec[half];
-    std::nth_element( vVec.begin(), vVec.begin()+half, vVec.end());
-    m_vMed = vVec[half];
 
-    // setup the precalculated helpers
-    m_hsvSatMed = sqrt(m_uMed*m_uMed + m_vMed*m_vMed);
+    // the selection cuts on the value are initialized to fix defaults
+    m_hsvValMin = 0.2f;
+    m_hsvValMax = 1.0f;
 
-    // now investigate the saturation and hue distribution
-    // to calculate reasonable hue and sat range factors
-    // we are abusing the vectors used before
-    pos=0;
+    // saturation and hue selection cuts are defined by the values
+    // for 5% and 95% of the cumulative distribution
+    const float outLim = 0.05f;
+    m_hsvSatMin = satHist.X( outLim);
+    m_hsvSatMax = satHist.X( 1.0f-outLim);
+    m_hsvHueRange = 0.5f * ( hueHist.X(1.0f-outLim) - hueHist.X(outLim) );
+    m_hsvCosDeltaHueMin = cos( m_hsvHueRange );
+
+    // now have a closer look at the hue and sat distributions
+    // their median should be within a 1 one sigma window arround the mean val
+    float mean = hueHist.mean();
+    float sigma = hueHist.sigma();
+    hueHist.reset( mean-sigma, mean+sigma);
+
+    mean = satHist.mean();
+    sigma = satHist.sigma();
+    satHist.reset( mean-sigma, mean+sigma);
+
     pixIter.reset();
     while(pixIter.next( 0 ,&rgbPix)){
-         float hsvSat, hsvVal, u, v;
-         calcUV( (int16_t)rgbPix.m_r , (int16_t)rgbPix.m_g, (int16_t)rgbPix.m_b, u, v, hsvSat, hsvVal );
-         uVec[pos] = fabs(hsvSat-m_hsvSatMed);
-         if(hsvSat>bite){
-             float cosDeltaHue = u*m_uMed + v*m_vMed;
-             cosDeltaHue /= m_hsvSatMed*hsvSat;
-             vVec[pos] = 1.0f-cosDeltaHue;
-         }else{
-             vVec[pos]=0.0f;
-         }
-         ++pos;
+         float u, v, sat, val;
+         translateRGB( rgbPix.m_r,rgbPix.m_g,rgbPix.m_b,  u, v, sat, val );
+         float hue0 = sat>bite ?  atan2(v,u) : 0.0f;
+         hue0-=hueOff;
+         if(hue0<-pi)hue0+=2.0f*pi;
+         else if(hue0>pi)hue0-=2.0f*pi;
+         hueHist.add( hue0);
+         satHist.add( sat);
     }
 
-    std::nth_element( uVec.begin(), uVec.begin()+half, uVec.end());
-    m_hsvSatRangeFac = uVec[half];
-    std::nth_element( vVec.begin(), vVec.begin()+half, vVec.end());
-    m_cosHueRangeFac = vVec[half];
+    // now get the saturation median
+    m_hsvSatMed=satHist.X(0.5);
 
-    m_hsvSatRangeFac *= 2.0f;
-    m_cosHueRangeFac *= 2.0f;
+    // and calculate the u, v and hue medians
+    float hueMed=hueHist.X(0.5)+hueOff;
+    m_uMed = m_hsvSatMed*cos( hueMed);
+    m_vMed = m_hsvSatMed*sin( hueMed);
 
-    if(m_hsvSatRangeFac<0.01f)m_hsvSatRangeFac=0.01f;
-    if(m_cosHueRangeFac<0.001f)m_cosHueRangeFac=0.001f;
-
-    // update saturation/hue filter helpers
-    setHsvSatRange(m_hsvSatRange);
-    setHsvHueRange(m_hsvHueRange);
-
-    EXPLOG("init: u_median=%.2f v_median=%.2f sat_(u,v)=%.2f satRangeFac=%.2f cosHueRangeFac=%.4f", m_uMed, m_vMed, m_hsvSatMed, m_hsvSatRangeFac, m_cosHueRangeFac);
+    EXPLOG("init: uMed=%.2f vMed=%.2f satMed=%.2f satMin=%.2f satMax=%.2f hueMed=%.2f hueRng=%.2f hueCos=%.4f hueOff=%.2f",
+           m_uMed, m_vMed, m_hsvSatMed, m_hsvSatMin, m_hsvSatMax, hueMed*r2d, m_hsvHueRange*r2d, m_hsvCosDeltaHueMin, hueOff*r2d );
     m_isActive = true;
 }
 
-void ExperimentalSignature::calcUV(float r, float g, float b, float &u, float &v, float& hsvSat, float& hsvVal) const
+void ExperimentalSignature::translateRGB(float r, float g, float b, float &u, float &v, float& hsvSat, float& hsvVal)
 {
     // this is more or less a duplicate of RuntimeSignature::isRgbAccepted
     // docu can be found there
@@ -210,23 +239,6 @@ void ExperimentalSignature::calcUV(float r, float g, float b, float &u, float &v
     v *= circleFac;
 }
 
-float ExperimentalSignature::hsvSatRange() const
-{
-    return m_hsvSatRange;
-}
-
-void ExperimentalSignature::setHsvSatRange(float hsvSatRange)
-{
-    m_hsvSatRange = hsvSatRange;
-    const float mx = max(m_hsvSatMed, 1.0f-m_hsvSatMed);
-    const float fac = pow(mx/m_hsvSatRangeFac, m_hsvSatRange);
-    EXPLOG("SatRng: %.2f %f %f",m_hsvSatRange, fac*m_hsvSatRangeFac, m_hsvSatMed);
-    m_hsvSatMin = m_hsvSatMed - m_hsvSatRangeFac * fac;
-    if(m_hsvSatMin<0.0f) m_hsvSatMin=0.0f;
-    m_hsvSatMax = m_hsvSatMed + m_hsvSatRangeFac * fac;
-    if(m_hsvSatMax>1.0f) m_hsvSatMax=1.0f;
-}
-
 float ExperimentalSignature::hsvValMin() const
 {
     return m_hsvValMin;
@@ -236,6 +248,7 @@ void ExperimentalSignature::setHsvValMin(float hsvValMin)
 {
     m_hsvValMin = hsvValMin;
 }
+
 float ExperimentalSignature::hsvValMax() const
 {
     return m_hsvValMax;
@@ -246,6 +259,7 @@ void ExperimentalSignature::setHsvValMax(float hsvValMax)
     m_hsvValMax = hsvValMax;
 }
 
+
 bool ExperimentalSignature::isActive() const
 {
     return m_isActive;
@@ -255,15 +269,8 @@ void ExperimentalSignature::setIsActive(bool isActive)
 {
     m_isActive = isActive;
 }
-float ExperimentalSignature::uMed() const
-{
-    return m_uMed;
-}
 
-float ExperimentalSignature::vMed() const
-{
-    return m_vMed;
-}
+
 float ExperimentalSignature::hsvHueRange() const
 {
     return m_hsvHueRange;
@@ -271,12 +278,44 @@ float ExperimentalSignature::hsvHueRange() const
 
 void ExperimentalSignature::setHsvHueRange(float hsvHueRange)
 {
-    m_hsvHueRange = hsvHueRange;
-    const float fac = pow(2.0f/m_cosHueRangeFac, m_hsvHueRange);
-    m_hsvCosDeltaHueMin = 1.0f - m_cosHueRangeFac * fac;
-    if(m_hsvCosDeltaHueMin>1.0f) m_hsvCosDeltaHueMin=1.0f;
-    if(m_hsvCosDeltaHueMin<-1.0f) m_hsvCosDeltaHueMin=-1.0f;
-    EXPLOG("HueRng: %.2f %f %f %f", hsvHueRange, fac, m_cosHueRangeFac, m_hsvCosDeltaHueMin);
+    m_hsvHueRange = hsvHueRange*d2r;
+    m_hsvCosDeltaHueMin = cos(m_hsvHueRange);
+}
+
+
+float ExperimentalSignature::hsvSatMin() const
+{
+    return m_hsvSatMin;
+}
+void ExperimentalSignature::setHsvSatMin(float hsvSatMin)
+{
+    m_hsvSatMin = hsvSatMin;
+}
+float ExperimentalSignature::hsvSatMax() const
+{
+    return m_hsvSatMax;
+}
+void ExperimentalSignature::setHsvSatMax(float hsvSatMax)
+{
+    m_hsvSatMax = hsvSatMax;
+}
+float ExperimentalSignature::uMed() const
+{
+    return m_uMed;
+}
+
+void ExperimentalSignature::setUMed(float uMed)
+{
+    m_uMed = uMed;
+}
+float ExperimentalSignature::vMed() const
+{
+    return m_vMed;
+}
+
+void ExperimentalSignature::setVMed(float vMed)
+{
+    m_vMed = vMed;
 }
 
 

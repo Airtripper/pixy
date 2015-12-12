@@ -23,7 +23,7 @@
 
 #define CC_SIGNATURE(s) (m_ccMode==CC_ONLY || m_clut.getType(s)==CL_MODEL_TYPE_COLORCODE)
 
-Blobs::Blobs(Qqueue *qq, uint8_t *lut, uint8_t *lutExp) : m_clut( lut, lutExp)
+Blobs::Blobs(Qqueue *qq, uint8_t *lut) : m_clut( lut)
 {
     int i;
 
@@ -112,7 +112,7 @@ int Blobs::runlengthAnalysis()
     int32_t res=0;
 	register int32_t u, v, c;
 
-#indef PIXY
+#ifndef PIXY
     // log LUT preselection performance
     const uint32_t lutSel_nFrms = 100;
     static uint32_t lutSel_allCnt = 0;
@@ -163,13 +163,21 @@ int Blobs::runlengthAnalysis()
             // decode r, g and b from the 2-pixel sum of
             // u=r-g, v=b-g and y=r+g+b
             // => g=(y-u-v)/3, r=u+g and b=v+g
+            // as each qval accumulates two pixels we have to divide the final rgb values by 2
             float g = qval.m_y - qval.m_u - qval.m_v;
-            g*=0.3333333f;
+            g*=(1.0f/3.0f);
             float r = float(qval.m_u) + g;
-            r*=rgbNorm;
+            r*=rgbNorm*0.5f;
             float b = float(qval.m_v) + g;
-            b*=rgbNorm;
-            g*=rgbNorm;
+            b*=rgbNorm*0.5f;
+            g*=rgbNorm*0.5f;
+
+            /* seen out of range rgb vals. Caused by float inacuracy or the g1/g2 bayer mess
+            const float l=0.0f;
+            const float h=1.0f;
+            if(r<l || r>h || g<l || g>h || b<l || b>h)
+                printf("%i %i %i => %f %f %f\n", qval.m_u,qval.m_v,qval.m_y, r,g,b);
+            */
 
             // determine the most probable signature by comparing distances in the (u,v) plane
             float dstMin = 23.0;
@@ -198,8 +206,7 @@ int Blobs::runlengthAnalysis()
                     }
                 }
             }
-            // set signature id and shift m_col as expected by the original code
-            // that shifts it 3 bit further to decode the pixel's x position
+            // set signature id
             sig = bestSigId;
             qvalAccepted = (sig!=0);
         }
@@ -208,6 +215,7 @@ int Blobs::runlengthAnalysis()
             // fetch signature ID from the  bitmap
             // use __CLZ(uint32_t) on the M4?
             sig=1;
+
             while( (sigBitMap&1)==0 ){
                 sigBitMap>>=1;
                 ++sig;
@@ -236,7 +244,7 @@ int Blobs::runlengthAnalysis()
         if (qvalAccepted)
         {
             qval.m_col >>= 7;
-        	startCol = qval.m_col;
+            startCol = qval.m_col;
            	merge = startCol-prevStartCol<=5 && prevSig==sig;
             if (segmentSig==0 && merge)
             {

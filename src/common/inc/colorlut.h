@@ -97,7 +97,7 @@ private:
 class ColorLUT
 {
 public:
-    ColorLUT(uint8_t *lut, uint8_t *lutExp);
+    ColorLUT(uint8_t *lut);
     ~ColorLUT();
 
     int generateSignature(const Frame8 &frame, const RectA &region, uint8_t signum);
@@ -132,7 +132,6 @@ private:
     void getMean(const RectA &region ,const Frame8 &frame, UVPixel *mean);
 
     uint8_t *m_lut;
-    uint8_t *m_lutExp;
     uint32_t m_maxDist;
     float m_ratio;
     float m_minRatio;
@@ -142,6 +141,7 @@ private:
     // experimental signature stuff
     public: //evillive
     bool m_useExpSigs;
+    bool m_useExpLut;
 };
 
 /// just a static wrapper to group the experimental color lookup table related stuff

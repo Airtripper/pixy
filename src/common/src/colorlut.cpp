@@ -148,12 +148,12 @@ uint32_t IterPixel::averageRgb(uint32_t *pixels)
 	return (r<<16) | (g<<8) | b;
 }
 
-ColorLUT::ColorLUT(uint8_t *lut, uint8_t *lutExp)
+ColorLUT::ColorLUT(uint8_t *lut)
 {
 	int i; 
     m_lut = lut;
-    m_lutExp = lutExp;
     m_useExpSigs = false;
+    m_useExpLut = false;
     memset((void *)m_signatures, 0, sizeof(ColorSignature)*CL_NUM_SIGNATURES);
     memset((void *)m_runtimeSigs, 0, sizeof(RuntimeSignature)*CL_NUM_SIGNATURES);
     for(int i=0; i<CL_NUM_SIGNATURES; ++i) m_expSigs[i] = ExperimentalSignature();
@@ -401,14 +401,14 @@ int ColorLUT::setSignature(uint8_t signum, const ColorSignature &sig)
 	return 0;
 }
 
-
 int ColorLUT::generateLUT()
 {
     int collisions = 0;
 
     clearLUT();
+
     if(m_useExpSigs){
-        // check which signatures are active and set the experimental one accordingly
+        // check which signatures are active and set the experimental ones accordingly
         // evillive ... kind of ugly doing this here
         for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s)
             if(m_expSigs[s].isActive()) m_expSigs[s].setIsActive( m_signatures[s].m_uMin!=0 || m_signatures[s].m_uMax!=0);
@@ -439,7 +439,7 @@ int ColorLUT::generateLUT()
                     // calc the (u,v) position in the color LUT ...
                     if(bestSigId){
 #ifndef PIXY
-                        if( m_useExpLUT ){
+                        if( m_useExpLut ){
                             int16_t ui,vi;
                             ColorLutCalculatorExp::calcUV( r,g,b, ui,vi);
                             // ... and store a 7bit bitmap of compatible signatures in there
@@ -497,10 +497,10 @@ int ColorLUT::generateLUT()
                         if ((m_runtimeSigs[sig].m_uMin<u) && (u<m_runtimeSigs[sig].m_uMax) &&
                                 (m_runtimeSigs[sig].m_vMin<v) && (v<m_runtimeSigs[sig].m_vMax))
                         {
-                            int32_t u = r-g; // evillive see below (made this local to get a reliable collision count)
+                            int32_t u = r-g; // evillive see below (made local to get a reliable collision count)
                             u >>= 9-CL_LUT_COMPONENT_SCALE;
                             u &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-                            int32_t v = b-g; // evillive see below (made this local to get a reliable collision count)
+                            int32_t v = b-g; // evillive see below (made local to get a reliable collision count)
                             v >>= 9-CL_LUT_COMPONENT_SCALE;
                             v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
 
@@ -508,7 +508,7 @@ int ColorLUT::generateLUT()
 
                             if(m_lut[bin] && m_lut[bin]!=sig+1 ) ++collisions;
 
-                            if (m_lut[bin]==0 || m_lut[bin]>1<<sig){
+                            if (m_lut[bin]==0 || m_lut[bin] > 1<<sig){
                                 // lower index signatures have higher prio and kick lower prio signatures out of the LUT
                                 m_lut[bin] = 1<<sig;
 #ifdef PIXY // don't bail out in cooked mode as it would affect the collision counting
@@ -530,11 +530,19 @@ int ColorLUT::generateLUT()
     const int sz = (1<<CL_LUT_COMPONENT_SCALE);
     const int strLen = sz*2+1;
     char str[strLen];
-    for(int v=0; v<sz; ++v){
+    for(int v=sz-1; v>=0; --v){
         unsigned int pos=0;
         for(int u=0; u<sz; ++u){
-            if(m_lut[(sz-v-1)*sz+u])
-                pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "%2X", m_lut[(sz-v-1)*sz+u]);
+            int ut,vt;
+            if(m_useExpLut){
+                ut=u;
+                vt=v;
+            }else{
+                ut = (v-(1<<(CL_LUT_COMPONENT_SCALE-1))) & ((1<<CL_LUT_COMPONENT_SCALE)-1);
+                vt = (u-(1<<(CL_LUT_COMPONENT_SCALE-1))) & ((1<<CL_LUT_COMPONENT_SCALE)-1);
+            }
+            if(m_lut[vt*sz+ut])
+                pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "%2X", m_lut[vt*sz+ut]);
             else
                 pos += snprintf( str+pos, (pos<strLen ? strLen-pos : 0), "..");
         }
@@ -553,15 +561,8 @@ void ColorLUT::clearLUT(uint8_t signum)
     {
         if (signum==0)
             m_lut[i] = 0;
-        else if (m_lut[i]==signum)
-            m_lut[i] = 0;
-    }
-    for (i=0; i<CL_LUT_SIZE; i++)
-    {
-        if (signum==0)
-            m_lutExp[i] = 0;
         else
-            m_lutExp[i] &= ~(1<<(signum-1));
+            m_lut[i] &= ~(1<<(signum-1));
     }
 }
 
