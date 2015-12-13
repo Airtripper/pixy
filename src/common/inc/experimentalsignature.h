@@ -19,6 +19,13 @@ const float pi = 3.1415926536f;
 const float d2r = pi/180.0f;
 const float r2d = 180.0f/pi;
 
+// The color signatures median (u,v) position in the chroma plane
+// Used in ExperimentalSignature class below.
+// Separated for storage as hidden parameter.
+struct ExpSigPos{
+    float m_uMed;
+    float m_vMed;
+};
 
 /// experimental signatures
 /// the signature's color model related stuff
@@ -74,17 +81,16 @@ public:
     float hsvSatMax() const;
     void setHsvSatMax(float hsvSatMax);
 
-    float uMed() const;
-    void setUMed(float uMed);
+    inline float uMed() const {return m_posUV.m_uMed;}
+    inline float vMed() const {return m_posUV.m_vMed;}
 
-    float vMed() const;
-    void setVMed(float vMed);
+    //ExpSigPos& accessPosUV() {return m_posUV;}
+    const ExpSigPos& posUV() const{return m_posUV;}
+    void setPosUV(const ExpSigPos &posUV);
 
 private:
-    bool m_isActive;
-    // median position of the signature training set
-    float m_uMed;
-    float m_vMed;
+    // median (u,v) position of the signature training set
+    ExpSigPos m_posUV;
     float m_hsvSatMed; // hsv saturation of the signatures median anchor, in fact its its length |u,v|
     // acceptance ranges (HSV)
     float m_hsvValMin;
@@ -93,6 +99,7 @@ private:
     float m_hsvSatMax;
     float m_hsvCosDeltaHueMin;
     float m_hsvHueRange;
+    bool m_isActive;
 };
 
 

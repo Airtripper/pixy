@@ -20,9 +20,6 @@
 
 #define SPARE_CAPACITY   16
 
-// hgs: don't know why I had to add that
-// #define NULL 0
-
 template <typename Object> class SimpleVector
 {
 public:

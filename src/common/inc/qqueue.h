@@ -45,10 +45,10 @@ typedef struct
     }
 #endif
 
-    uint16_t m_col;
-    int16_t m_v;
-    int16_t m_u;
-    uint16_t m_y;
+    uint16_t m_col; // column or color? It's both! The 3 LSB wer the sig id, now the 7 LSB are a signature bitmap. The bits above are the colum or x coordinate
+    int16_t m_v;    // v=b-g
+    int16_t m_u;    // u=r-g
+    uint16_t m_y;   // y=r+(g1+g2)/2+b ... u,v,y contain the sum of two pixels! r,g,b [0,2*255] => y[0,6*255] u,v[0,2*255]
 
 #ifdef __cplusplus  
 }; 

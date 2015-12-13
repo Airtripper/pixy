@@ -24,6 +24,7 @@
 #include "calc.h"
 #include "debug.h"
 
+#define EXP_SIG_PARMS_STORED_ON_PIXY
 
 // declare module
 MON_MODULE(CccModule);
@@ -37,25 +38,30 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
     m_lut = new uint8_t[CL_LUT_SIZE];
     m_blobs = new Blobs(m_qq, m_lut);
 
-    m_interpreter->m_pixymonParameters->addCheckbox("Use exp sigs", m_blobs->m_clut.m_useExpSigs, "Use experimental signatures","expSigs");
-    m_interpreter->m_pixymonParameters->addCheckbox("Logging", g_logExp, "Logging","expSigs");
 
-    for(int i=0; i<CL_NUM_SIGNATURES;++i){
+    m_interpreter->m_pixymonParameters->addCheckbox("Use exp LUT", m_blobs->m_clut.m_useExpLut, "Use experimental LUT (supported only for experimental signatures in cooked mode)","expSig");
+    m_interpreter->m_pixymonParameters->addCheckbox("Logging", g_logExp, "Logging","expSig");
+
+#ifndef EXP_SIG_PARMS_STORED_ON_PIXY
+    m_interpreter->m_pixymonParameters->addCheckbox("Use exp sigs", m_blobs->m_clut.m_useExpSigs, "Use experimental signatures","expSig");
+
+    for(int i=1; i<=CL_NUM_SIGNATURES;++i){
        const int nameLen = 30;
        char tabName[nameLen];
        char sldName[nameLen];
-       snprintf( tabName, nameLen,"Sig %d",i+1);
-       snprintf( sldName, nameLen,"Hue range %d",i+1);
-       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvHueRange(), 0.0f, 45.0f, "The range for identifying the colors of a signature.", tabName);
-       snprintf( sldName, nameLen,"Sat min %d",i+1);
-       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvSatMin(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
-       snprintf( sldName, nameLen,"Sat max %d",i+1);
-       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvSatMax(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
-       snprintf( sldName, nameLen,"Val min %d",i+1);
-       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvValMin() , 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
-       snprintf( sldName, nameLen,"Val max %d",i+1);
-       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.m_expSigs[i].hsvValMax(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( tabName, nameLen,"Sig %d",i);
+       snprintf( sldName, nameLen,"Hue range %d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.expSig(i).hsvHueRange(), 0.0f, 45.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Sat min %d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.expSig(i).hsvSatMin(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Sat max %d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.expSig(i).hsvSatMax(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Val min %d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.expSig(i).hsvValMin() , 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
+       snprintf( sldName, nameLen,"Val max %d",i);
+       m_interpreter->m_pixymonParameters->addSlider( sldName, m_blobs->m_clut.expSig(i).hsvValMax(), 0.0f, 1.0f, "The range for identifying the colors of a signature.", tabName);
     }
+#endif
 
     Parameter rm("Cooked render mode", PT_INT8, 2, "Cooked video rendering mode.");
     rm.addRadioValue(RadioValue("Boxes only", 0));
@@ -65,7 +71,6 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
 
     m_renderMode = pixymonParameter("Cooked render mode").toUInt();
 
-//<<<<disco<<< HEAD
     QStringList scriptlet;
 
     scriptlet << "cam_testPattern 1";
@@ -76,6 +81,7 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
     scriptlet << "runprogArg 8 1";
     m_interpreter->emitActionScriptlet("TestPattern Off", scriptlet);
 
+#ifndef EXP_SIG_PARMS_STORED_ON_PIXY
     scriptlet.clear();
     scriptlet << "cam_getFrame 0x21 0 0 320 200";
     scriptlet << "newsigArea 1";
@@ -153,10 +159,9 @@ CccModule::CccModule(Interpreter *interpreter) : MonModule(interpreter)
     scriptlet << "clearSig 0";
     scriptlet << "runprogArg 8 1";
     m_interpreter->emitActionScriptlet("Clear ALL signatures ", scriptlet);
-//===disco====
+#endif
     for (i=0; i<CL_NUM_SIGNATURES; i++)
         m_palette[i] = Qt::black;
-//>>>disco>>>> refs/remotes/charmedlabs/master
 }
 
 CccModule::~CccModule()
@@ -193,6 +198,7 @@ bool CccModule::render(uint32_t fourcc, const void *args[])
 
 bool CccModule::command(const QStringList &argv)
 {
+#ifndef EXP_SIG_PARMS_STORED_ON_PIXY
     if (argv[0]=="newsigArea" || argv[0]=="clearSig" )
     {
         bool kickIt = argv[0]=="clearSig";
@@ -213,11 +219,11 @@ bool CccModule::command(const QStringList &argv)
             }
             if(sig){
                 m_blobs->m_clut.m_signatures[sig-1]=ColorSignature();
-                m_blobs->m_clut.m_expSigs[sig-1].setIsActive(false);
+                m_blobs->m_clut.accExpSig(sig).setIsActive(false);
             }else{
                 for(int i=0; i<7; ++i){
                     m_blobs->m_clut.m_signatures[i]=ColorSignature();
-                    m_blobs->m_clut.m_expSigs[i].setIsActive(false);
+                    m_blobs->m_clut.accExpSig(i+1).setIsActive(false);
                 }
             }
         }else{
@@ -241,6 +247,7 @@ bool CccModule::command(const QStringList &argv)
         m_renderer->setPalette(palette);
         return true;
     }
+#endif
     return false;
 }
 
@@ -284,9 +291,6 @@ void CccModule::paramChange()
     int i;
     QVariant val;
     bool relut = false;
-
-    //uint32_t palette[CL_NUM_SIGNATURES]; // evillive hgs: get rid of unused warning
-
     char id[128];
     uint32_t sigLen;
     uint8_t *sigData;
@@ -307,7 +311,6 @@ void CccModule::paramChange()
             }
         }
     }
-
     if (pixyParameterChanged("Signature 1 range", &val))
     {
         m_blobs->m_clut.setSigRange(1, val.toFloat());
@@ -354,41 +357,53 @@ void CccModule::paramChange()
         relut = true;
     }
 
-    //hgs->
-    m_blobs->m_clut.m_useExpSigs = pixymonParameter("Use exp sigs").toBool();
+#ifndef EXP_SIG_PARMS_STORED_ON_PIXY
+    //m_blobs->m_clut.m_useExpSigs = pixymonParameter("Use exp sigs").toBool();
+    if (pixymonParameterChanged("Use exp sigs", &val))
+    {
+        m_blobs->m_clut.m_useExpSigs = val.toBool();
+        relut = true;
+    }
+    if (pixymonParameterChanged("Use exp LUT", &val))
+    {
+        m_blobs->m_clut.m_useExpLut = val.toBool();
+        relut = true;
+    }
+
     g_logExp = pixymonParameter("Logging").toBool();
     //<-hgs
     // hgs fixme!
-    for(int i=0; i<CL_NUM_SIGNATURES;++i){
+    for(int i=1; i<=CL_NUM_SIGNATURES;++i){
         const int nameLen = 30;
         char sldName[nameLen];
 
-        snprintf( sldName, nameLen,"Hue range %d",i+1);
+        snprintf( sldName, nameLen,"Hue range %d",i);
         if( pixymonParameterChanged(sldName, &val)){
-            m_blobs->m_clut.m_expSigs[i].setHsvHueRange(val.toFloat());
+            m_blobs->m_clut.accExpSig(i).setHsvHueRange(val.toFloat());
             relut = true;
         }
-        snprintf( sldName, nameLen,"Sat min %d",i+1);
+        snprintf( sldName, nameLen,"Sat min %d",i);
         if( pixymonParameterChanged(sldName, &val)){
-            m_blobs->m_clut.m_expSigs[i].setHsvSatMin(val.toFloat());
+            m_blobs->m_clut.accExpSig(i).setHsvSatMin(val.toFloat());
             relut = true;
         }
-        snprintf( sldName, nameLen,"Sat max %d",i+1);
+        snprintf( sldName, nameLen,"Sat max %d",i);
         if( pixymonParameterChanged(sldName, &val)){
-            m_blobs->m_clut.m_expSigs[i].setHsvSatMax(val.toFloat());
+            m_blobs->m_clut.accExpSig(i).setHsvSatMax(val.toFloat());
             relut = true;
         }
-        snprintf( sldName, nameLen,"Val min %d",i+1);
+        snprintf( sldName, nameLen,"Val min %d",i);
         if( pixymonParameterChanged(sldName, &val)){
-            m_blobs->m_clut.m_expSigs[i].setHsvValMin(val.toFloat());
+            m_blobs->m_clut.accExpSig(i).setHsvValMin(val.toFloat());
             relut = true;
         }
-        snprintf( sldName, nameLen,"Val max %d",i+1);
+        snprintf( sldName, nameLen,"Val max %d",i);
         if( pixymonParameterChanged(sldName, &val)){
-            m_blobs->m_clut.m_expSigs[i].setHsvValMax(val.toFloat());
+            m_blobs->m_clut.accExpSig(i).setHsvValMax(val.toFloat());
             relut = true;
         }
     }
+#endif
 
     if (relut)
     {

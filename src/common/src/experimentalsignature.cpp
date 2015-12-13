@@ -5,17 +5,16 @@
 
 using namespace std;
 
-ExperimentalSignature::ExperimentalSignature():
-    m_isActive(false),
-    m_uMed(0.0f),
-    m_vMed(0.0f),
+ExperimentalSignature::ExperimentalSignature():   
+    m_posUV(),
     m_hsvSatMed(0.0f),
     m_hsvValMin(0.2f),
     m_hsvValMax(1.0f),
     m_hsvSatMin(0.2f),
     m_hsvSatMax(1.0f),
     m_hsvCosDeltaHueMin(1.0f),
-    m_hsvHueRange(5.0f)
+    m_hsvHueRange(5.0f),
+    m_isActive(false)
 {}
 
 ExperimentalSignature::~ExperimentalSignature()
@@ -94,7 +93,7 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     v *= circleFac;
 
     // calculate cosine delta hue using dot product: (u,v)_sig . (u,v)_pix / |(u,v)_sig| / |(u,v)_pix|
-    float cosHue = u*m_uMed + v*m_vMed;
+    float cosHue = u*uMed() + v*vMed();
     cosHue /= hsvSat * m_hsvSatMed;
 
     //if(cosHue>0.99) EXPLOG("u=%.2f v=%.2f um=%.2f vm=%.2f c=%.24f ", u,v,m_uMed ,m_vMed,cosHue);
@@ -187,11 +186,12 @@ void ExperimentalSignature::init( IterPixel& pixIter)
 
     // and calculate the u, v and hue medians
     float hueMed=hueHist.X(0.5)+hueOff;
-    m_uMed = m_hsvSatMed*cos( hueMed);
-    m_vMed = m_hsvSatMed*sin( hueMed);
-
+    m_posUV.m_uMed = m_hsvSatMed*cos( hueMed);
+    m_posUV.m_vMed = m_hsvSatMed*sin( hueMed);
+#ifndef PIXY
     EXPLOG("init: uMed=%.2f vMed=%.2f satMed=%.2f satMin=%.2f satMax=%.2f hueMed=%.2f hueRng=%.2f hueCos=%.4f hueOff=%.2f",
-           m_uMed, m_vMed, m_hsvSatMed, m_hsvSatMin, m_hsvSatMax, hueMed*r2d, m_hsvHueRange*r2d, m_hsvCosDeltaHueMin, hueOff*r2d );
+           uMed(), vMed(), m_hsvSatMed, m_hsvSatMin, m_hsvSatMax, hueMed*r2d, m_hsvHueRange*r2d, m_hsvCosDeltaHueMin, hueOff*r2d );
+#endif
     m_isActive = true;
 }
 
@@ -299,24 +299,14 @@ void ExperimentalSignature::setHsvSatMax(float hsvSatMax)
 {
     m_hsvSatMax = hsvSatMax;
 }
-float ExperimentalSignature::uMed() const
+
+void ExperimentalSignature::setPosUV(const ExpSigPos &posUV)
 {
-    return m_uMed;
+    m_posUV = posUV;
+    m_hsvSatMed = sqrt(uMed()*uMed()+vMed()*vMed());
 }
 
-void ExperimentalSignature::setUMed(float uMed)
-{
-    m_uMed = uMed;
-}
-float ExperimentalSignature::vMed() const
-{
-    return m_vMed;
-}
 
-void ExperimentalSignature::setVMed(float vMed)
-{
-    m_vMed = vMed;
-}
 
 
 

@@ -23,7 +23,7 @@
 
 #define CC_SIGNATURE(s) (m_ccMode==CC_ONLY || m_clut.getType(s)==CL_MODEL_TYPE_COLORCODE)
 
-Blobs::Blobs(Qqueue *qq, uint8_t *lut) : m_clut( lut)
+Blobs::Blobs(Qqueue *qq, uint8_t *lut) : m_clut(lut)
 {
     int i;
 
@@ -172,7 +172,7 @@ int Blobs::runlengthAnalysis()
             b*=rgbNorm*0.5f;
             g*=rgbNorm*0.5f;
 
-            /* seen out of range rgb vals. Caused by float inacuracy or the g1/g2 bayer mess
+            /* seen out of range rgb vals. Caused by float inaccuracy or the g1/g2 bayer mess
             const float l=0.0f;
             const float h=1.0f;
             if(r<l || r>h || g<l || g>h || b<l || b>h)
@@ -195,7 +195,7 @@ int Blobs::runlengthAnalysis()
 
                 // check signature compatibility and calc the distance in the (u,v) plane
                 float u,v;
-                const ExperimentalSignature& es = m_clut.m_expSigs[sigId-1];
+                const ExperimentalSignature& es = m_clut.expSig(sigId);
                 if( es.isRgbAccepted(r,g,b, u,v)){
                     float du = u-es.uMed();
                     float dv = v-es.vMed();
@@ -236,11 +236,11 @@ int Blobs::runlengthAnalysis()
                            m_clut.m_runtimeSigs[sig-1].m_vMin<v && v<m_clut.m_runtimeSigs[sig-1].m_vMax &&
                            c>=(int32_t)m_clut.m_miny;
         }
-
+#ifndef PIXY
         // log LUT preselection performance
         ++lutSel_allCnt;
         if(!qvalAccepted) ++lutSel_koCnt;
-
+#endif
         if (qvalAccepted)
         {
             qval.m_col >>= 7;
@@ -271,13 +271,13 @@ int Blobs::runlengthAnalysis()
         }
     }
 	endFrame();
-
+#ifndef PIXY
     // log LUT preselection performance
     if(++lutSel_frmCnt>=lutSel_nFrms){
         EXPLOG("LUT pre-selected/frame %u %.1f%% false pos", lutSel_allCnt/lutSel_nFrms, float(lutSel_koCnt)/lutSel_allCnt*100.0f);
         lutSel_allCnt = lutSel_koCnt = lutSel_frmCnt = 0;
     }
-
+#endif
     if (qval.m_col==0xfffe) // error code, queue overrun
 		return -1;
 	return 0;

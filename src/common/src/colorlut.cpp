@@ -22,7 +22,9 @@
 #include "colorlut.h"
 #include "calc.h"
 
+#ifndef PIXY
 bool g_logExp = true;
+#endif
 
 IterPixel::IterPixel(const Frame8 &frame, const RectA &region)
 {
@@ -58,26 +60,26 @@ bool IterPixel::reset(bool cleari)
     return true;
 }
 
-bool IterPixel::next(UVPixel *uv, RGBPixel *rgb)
+bool IterPixel::next(UVPixel *uv, RGBPixel *rgb, bool omitCutOnY)
 {
     if (m_points)
     {
-        if (nextHelper(uv, rgb))
+        if (nextHelper(uv, rgb, omitCutOnY))
             return true; // working on the current block
         else // get new block
         {
             if (reset(false)) // reset indexes, increment m_i, get new block
-                return nextHelper(uv, rgb);  // we have another block!
+                return nextHelper(uv, rgb, omitCutOnY);  // we have another block!
             else
                 return false; // blocks are empty
         }
     }
     else
-        return nextHelper(uv, rgb);
+        return nextHelper(uv, rgb, omitCutOnY);
 }
 
 
-bool IterPixel::nextHelper(UVPixel *uv, RGBPixel *rgb)
+bool IterPixel::nextHelper(UVPixel *uv, RGBPixel *rgb, bool omitCutOnY)
 {
     int32_t r, g1, g2, b, u, v, c, miny=CL_MIN_Y;
 
@@ -105,14 +107,14 @@ bool IterPixel::nextHelper(UVPixel *uv, RGBPixel *rgb)
         if (uv)
         {
             c = r+g1+b;
-            if (c<miny)
+            if (c<miny && !omitCutOnY)
             {
                 m_x += 2;
                 continue;
             }
             u = ((r-g1)<<CL_LUT_ENTRY_SCALE)/c;
             c = r+g2+b;
-            if (c<miny)
+            if (c<miny && !omitCutOnY)
             {
                 m_x += 2;
                 continue;
@@ -153,7 +155,6 @@ ColorLUT::ColorLUT(uint8_t *lut)
 	int i; 
     m_lut = lut;
     m_useExpSigs = false;
-    m_useExpLut = false;
     memset((void *)m_signatures, 0, sizeof(ColorSignature)*CL_NUM_SIGNATURES);
     memset((void *)m_runtimeSigs, 0, sizeof(RuntimeSignature)*CL_NUM_SIGNATURES);
     for(int i=0; i<CL_NUM_SIGNATURES; ++i) m_expSigs[i] = ExperimentalSignature();
@@ -167,7 +168,10 @@ ColorLUT::ColorLUT(uint8_t *lut)
 	for (i=0; i<CL_NUM_SIGNATURES; i++)
 		m_sigRanges[i] = CL_DEFAULT_SIG_RANGE;
 
+#ifndef PIXY
+    m_useExpLut = false;
     ColorLutCalculatorExp::setupDivLut();
+#endif
 }
 
 
@@ -324,7 +328,7 @@ int ColorLUT::generateSignature(const Frame8 &frame, const RectA &region, uint8_
     ip.reset();
     m_expSigs[signum-1].init( ip);
 
-
+    // hgs evillive: check if still needed
     // set the cooked render mode filter pass indication highlight color
     uint32_t rm=0, gm=0, bm=0;
     RGBPixel rgbPix;
@@ -339,7 +343,7 @@ int ColorLUT::generateSignature(const Frame8 &frame, const RectA &region, uint8_
     rm/=cnt;
     gm/=cnt;
     bm/=cnt;
-    EXPLOG("hghlght %d => %d %d %d", cnt, rm, gm, bm);
+    //EXPLOG("hghlght %d => %d %d %d", cnt, rm, gm, bm);
     m_signatures[signum-1].m_rgb = rgbPack( rm, gm, bm);
 
     updateSignature(signum);
@@ -408,6 +412,7 @@ int ColorLUT::generateLUT()
     clearLUT();
 
     if(m_useExpSigs){
+
         // check which signatures are active and set the experimental ones accordingly
         // evillive ... kind of ugly doing this here
         for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s)
@@ -515,7 +520,7 @@ int ColorLUT::generateLUT()
                                 break; // bail out here as higher index signatures don't have a chance to get into this LUT entry any more
 #endif
                             }
-                            // evillive: overwriting u and v and not bailing out of the loop here
+                            // Overwriting u and v and not bailing out of the loop here
                             // is either a bug or an ELO 2000+ design i don't understand.
                             // Not absolutely sure, but I think it doesn't harm.
                         }
@@ -833,7 +838,7 @@ uint32_t ColorLUT::getColor(uint8_t signum)
 
 
 
-
+#ifndef PIXY
 uint8_t ColorLutCalculatorExp::s_divLut[256];
 
 void ColorLutCalculatorExp::calcUV(int16_t r, int16_t g, int16_t b, int16_t &u, int16_t &v)
@@ -943,3 +948,4 @@ void ColorLutCalculatorExp::setupDivLut()
     }
     EXPLOG("Division LUT: seed=%u err=%.1f%%",nomi,maxErr*100.0f);
 }
+#endif

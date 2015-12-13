@@ -19,7 +19,9 @@
 #include "simplevector.h"
 #include "pixytypes.h"
 #include "experimentalsignature.h"
+#ifndef PIXY
 #include "debug.h"
+#endif
 
 #define CL_NUM_SIGNATURES               7
 #define CL_LUT_COMPONENT_SCALE          6
@@ -36,12 +38,14 @@
 #define CL_DEFAULT_CCGAIN               1.5f
 #define CL_MODEL_TYPE_COLORCODE         1
 
+#ifndef PIXY
 extern bool g_logExp;
 //#define EXPLOG printf
 #ifndef PIXY
 #define EXPLOG(...)  if(g_logExp)qDebug(__VA_ARGS__)
 #else
 #define EXPLOG(...)
+#endif
 #endif
 
 struct ColorSignature
@@ -61,7 +65,6 @@ struct ColorSignature
     uint32_t m_type;
 };
 
-class IterPixel;
 
 struct RuntimeSignature
 {
@@ -79,12 +82,12 @@ class IterPixel
 public:
     IterPixel(const Frame8 &frame, const RectA &region);
     IterPixel(const Frame8 &frame, const Points *points);
-    bool next(UVPixel *uv, RGBPixel *rgb=NULL);
+    bool next(UVPixel *uv, RGBPixel *rgb=NULL, bool omitCutOnY=false);
     bool reset(bool cleari=true);
 	uint32_t averageRgb(uint32_t *pixels=NULL);
 
 private:
-    bool nextHelper(UVPixel *uv, RGBPixel *rgb);
+    bool nextHelper(UVPixel *uv, RGBPixel *rgb, bool omitCutOnY);
 
     Frame8 m_frame;
     RectA m_region;
@@ -120,10 +123,17 @@ public:
     // these should be in little access methods, but they're here to speed things up a tad
     ColorSignature m_signatures[CL_NUM_SIGNATURES];
     RuntimeSignature m_runtimeSigs[CL_NUM_SIGNATURES];
-    ExperimentalSignature m_expSigs[CL_NUM_SIGNATURES];
+
     uint32_t m_miny;
 
+    /// non const access to experimental signature of given ID [1-7]
+    inline ExperimentalSignature& accExpSig(uint8_t idx) {return m_expSigs[(idx-1)&0x7];}
+    /// returns experimental signature of given ID [1-7]
+    inline const ExperimentalSignature& expSig(uint8_t idx) const {return m_expSigs[(idx-1)&0x7];}
+
 private:
+    ExperimentalSignature m_expSigs[CL_NUM_SIGNATURES];
+
     bool growRegion(RectA *region, const Frame8 &frame, uint8_t dir);
     float testRegion(const RectA &region, const Frame8 &frame, UVPixel *mean, Points *points);
 
@@ -141,7 +151,9 @@ private:
     // experimental signature stuff
     public: //evillive
     bool m_useExpSigs;
+#ifndef PIXY
     bool m_useExpLut;
+#endif
 };
 
 /// just a static wrapper to group the experimental color lookup table related stuff
