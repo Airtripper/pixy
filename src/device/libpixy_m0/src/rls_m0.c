@@ -239,14 +239,15 @@ _ASM_LABEL(beg1)
 	_ASM(MOV	r6, r10)	 // bring in usum
 	//_ASM(CMP	r1, r7)		//                              +++++++++++++++++++++ tweaked hgs
 	_ASM(ANDS   r1, r7)		// store if (sig1 & sig2) != 0  +++++++++++++++++++++ tweaked hgs
-	_ASM(BNE	beg0)  
+	//_ASM(BNE	beg0)  		//                              +++++++++++++++++++++ tweaked hgs
+	_ASM(BEQ	beg0)  		//                              +++++++++++++++++++++ tweaked hgs
 	// ************ store qvals 
  	_ASM(MOV	r5, r12)	 // bring in qmem pointer
  	_ASM(STRH	r6, [r5, #4]) // store usum
 	// cycle
 	//_ASM(ORRS	r7, r4, r7)	// combine signature and index +++++++++++++++++++++ tweaked hgs
 	_ASM(LSLS r7, r4, #4)		// shift column index (r4) 4 bytes left to free the 7 LSB for the signature bitmap. +++++++++++++++++++++ tweaked hgs
-        _ASM(ORRS r7, r1)			// OR combine shifted index with signature bitmap from r1 +++++++++++++++++++++ tweaked hgs
+    _ASM(ORRS r7, r1)			// OR combine shifted index with signature bitmap from r1 +++++++++++++++++++++ tweaked hgs
 	_ASM(ADDS	r4, #2)	 // increment line mem
 	// *** PIXEL SYNC RED
 	_ASM(LDRH	r1, [r3, r4]) // load b+gsum

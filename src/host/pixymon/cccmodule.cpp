@@ -357,22 +357,74 @@ void CccModule::paramChange()
         relut = true;
     }
 
-#ifndef EXP_SIG_PARMS_STORED_ON_PIXY
+
+    if (pixymonParameterChanged("Use exp LUT", &val)){
+        m_blobs->m_clut.m_useExpLut = val.toBool();
+        relut = true;
+    }
+    g_logExp = pixymonParameter("Logging").toBool();
+
+#ifdef EXP_SIG_PARMS_STORED_ON_PIXY
+
+    if (pixyParameterChanged( parName_eSigUse, &val)){
+        m_blobs->m_clut.m_useExpSigs = val.toBool();
+        relut = true;
+    }
+
+    for(int i=1; i<=CL_NUM_SIGNATURES;++i){
+        const int idLen = 30;
+        char id[idLen];
+
+        snprintf(id, idLen, parName_eSigPos, i);
+        if (pixyParameterChanged(id, &val)){
+            QByteArray ba = val.toByteArray();
+            uint32_t sigLen;
+            uint8_t *sigData;
+            Chirp::deserialize((uint8_t *)ba.data(), val.toByteArray().size(), &sigLen, &sigData, END);
+            if (sigLen==sizeof(ExpSigPos)){
+                m_blobs->m_clut.accExpSig(i).setPosUV(*(reinterpret_cast<ExpSigPos*>(sigData)));
+                relut = true;
+            }else EXPLOG("Ouch! Can't load ExpSigPos.");
+        }
+        snprintf(id, idLen, parName_eSigAct, i);
+        if (pixyParameterChanged( id, &val)){
+            m_blobs->m_clut.accExpSig(i).setIsActive(val.toBool());
+            relut = true;
+        }
+        snprintf( id, idLen, parName_eSigHueRng, i);
+        if( pixyParameterChanged( id, &val)){
+            m_blobs->m_clut.accExpSig(i).setHsvHueRange(val.toFloat());
+            relut = true;
+        }
+        snprintf( id, idLen, parName_eSigSatMin, i);
+        if( pixyParameterChanged( id, &val)){
+            m_blobs->m_clut.accExpSig(i).setHsvSatMin(val.toFloat());
+            relut = true;
+        }
+        snprintf( id, idLen, parName_eSigSatMax,i);
+        if( pixyParameterChanged( id, &val)){
+            m_blobs->m_clut.accExpSig(i).setHsvSatMax(val.toFloat());
+            relut = true;
+        }
+        snprintf( id, idLen, parName_eSigValMin, i);
+        if( pixyParameterChanged( id, &val)){
+            m_blobs->m_clut.accExpSig(i).setHsvValMin(val.toFloat());
+            relut = true;
+        }
+        snprintf( id, idLen, parName_eSigValMax, i);
+        if( pixyParameterChanged( id, &val)){
+            m_blobs->m_clut.accExpSig(i).setHsvValMax(val.toFloat());
+            relut = true;
+        }
+    }
+#else
     //m_blobs->m_clut.m_useExpSigs = pixymonParameter("Use exp sigs").toBool();
     if (pixymonParameterChanged("Use exp sigs", &val))
     {
         m_blobs->m_clut.m_useExpSigs = val.toBool();
         relut = true;
     }
-    if (pixymonParameterChanged("Use exp LUT", &val))
-    {
-        m_blobs->m_clut.m_useExpLut = val.toBool();
-        relut = true;
-    }
 
-    g_logExp = pixymonParameter("Logging").toBool();
-    //<-hgs
-    // hgs fixme!
     for(int i=1; i<=CL_NUM_SIGNATURES;++i){
         const int nameLen = 30;
         char sldName[nameLen];

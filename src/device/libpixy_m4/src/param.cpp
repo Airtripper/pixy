@@ -465,8 +465,12 @@ int prm_add(const char *id, uint32_t flags, const char *desc, ...)
 	ParamRecord *rec = (ParamRecord *)buf;
 
 	// if it already exists, 
-	if (prm_find(id))
+	if (prm_find(id)){
+		//DBG("prmAdd -2 %s",id);
 		return -2;
+	}
+
+
 
 	memset((void *)rec, 0, PRM_MAX_LEN);
 
@@ -490,17 +494,22 @@ int prm_add(const char *id, uint32_t flags, const char *desc, ...)
     len = Chirp::vserialize(NULL, (uint8_t *)rec+offset, PRM_MAX_LEN-offset, &args);
     va_end(args);
 
-	if (len<0)
+	if (len<0){
+		DBG("prmAdd -3 %s",id);
 		return -3;
-
+	}
 	rec->flags = flags;
 	rec->len = len;
 	rec->crc = prm_crc(rec); 
 
-	if ((freeLoc=prm_nextFree())==NULL)
+	if ((freeLoc=prm_nextFree())==NULL){
+		DBG("prmAdd -4 %s",id);
 		return -4;
-	
-	return flash_program(freeLoc, (uint8_t *)rec, len+prm_getDataOffset(rec));	
+	}
+
+	int r=flash_program(freeLoc, (uint8_t *)rec, len+prm_getDataOffset(rec));
+	if(r<0)DBG("prmAdd -1 %s",id);
+	return r;
 }
 
 bool prm_dirty()

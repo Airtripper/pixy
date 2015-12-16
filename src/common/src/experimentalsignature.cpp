@@ -3,17 +3,26 @@
 
 #include <math.h>
 
-using namespace std;
+// parameter names or their format strings
+const char* parName_eSigUse = "Use Experimental Signatures";
+const char* parName_eSigPos = "eSigPos%d";
+const char* parName_eSigAct = "eSig%d Active";
+const char* parName_eSigHueRng = "eSig%d HueRange";
+const char* parName_eSigSatMin = "eSig%d SatMin";
+const char* parName_eSigSatMax = "eSig%d SatMax";
+const char* parName_eSigValMin = "eSig%d ValMin";
+const char* parName_eSigValMax = "eSig%d ValMax";
+
 
 ExperimentalSignature::ExperimentalSignature():   
     m_posUV(),
-    m_hsvSatMed(0.0f),
-    m_hsvValMin(0.2f),
-    m_hsvValMax(1.0f),
-    m_hsvSatMin(0.2f),
-    m_hsvSatMax(1.0f),
+    m_hsvSatMed(0.00f),  // the default is white
+    m_hsvValMin(0.95f),
+    m_hsvValMax(1.00f),
+    m_hsvSatMin(0.00f),
+    m_hsvSatMax(0.05f),
     m_hsvCosDeltaHueMin(1.0f),
-    m_hsvHueRange(5.0f),
+    m_hsvHueRange(0.0f),
     m_isActive(false)
 {}
 
@@ -38,6 +47,7 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // clean this up, ... maybe at least some inline functions
 
     if(!m_isActive)return false;
+
     // calc rgb min and max
     float hsvVal = g; // aka rgbMax
     float rgbMin = g;
@@ -88,9 +98,14 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // u-v coordinates are independent of the HSV value
     // now make the hexagon a circle
     // we would need the sqrt anyway, but it adds another division
-    float circleFac = hsvSat / sqrt(u*u+v*v);  // evillive check if M4 FPU is used
+    float circleFac = hsvSat / sqrtf(u*u+v*v);  // evillive check if M4 FPU is used
     u *= circleFac;
     v *= circleFac;
+
+    // We got here with with zero signature saturation => Accept the candidate
+    // This bail out prevents a division by zero below.
+    // We could have bailed out earlier but we wanna return valid u and v values
+    if(m_hsvSatMed<bite)return true;
 
     // calculate cosine delta hue using dot product: (u,v)_sig . (u,v)_pix / |(u,v)_sig| / |(u,v)_pix|
     float cosHue = u*uMed() + v*vMed();
@@ -106,7 +121,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
 {
     // approximation of the hue and saturation median
     // do it with simple histograms
-    // inspired by "Binapprox" algorithm described in
+    // based on "Binapprox" algorithm described in
     // "Fast Computation of the Median by Successive Binning"
     // Ryan J. Tibshirani, Dept. of Statistics, Stanford University""
 
@@ -139,7 +154,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     while(pixIter.next( 0 ,&rgbPix)){
          float u, v, sat, val;
          translateRGB( rgbPix.m_r,rgbPix.m_g,rgbPix.m_b,  u, v, sat, val );
-         float hue0 = sat>bite ?  atan2(v,u) : 0.0f;
+         float hue0 = sat>bite ?  atan2f(v,u) : 0.0f;
          hue0-=hueOff;
          if(hue0<-pi)hue0+=2.0f*pi;
          else if(hue0>pi)hue0-=2.0f*pi;
@@ -173,7 +188,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     while(pixIter.next( 0 ,&rgbPix)){
          float u, v, sat, val;
          translateRGB( rgbPix.m_r,rgbPix.m_g,rgbPix.m_b,  u, v, sat, val );
-         float hue0 = sat>bite ?  atan2(v,u) : 0.0f;
+         float hue0 = sat>bite ?  atan2f(v,u) : 0.0f;
          hue0-=hueOff;
          if(hue0<-pi)hue0+=2.0f*pi;
          else if(hue0>pi)hue0-=2.0f*pi;
@@ -234,7 +249,7 @@ void ExperimentalSignature::translateRGB(float r, float g, float b, float &u, fl
 
     // now we have a (u,v) vector pointing into a nice YUV hexagon in the u-v plane
     // now make the hexagon a circle
-    float circleFac = hsvSat / sqrt(u*u+v*v);  // evillive check if M4 FPU is used
+    float circleFac = hsvSat / sqrtf(u*u+v*v);  // evillive check if M4 FPU is used
     u *= circleFac;
     v *= circleFac;
 }
@@ -303,7 +318,7 @@ void ExperimentalSignature::setHsvSatMax(float hsvSatMax)
 void ExperimentalSignature::setPosUV(const ExpSigPos &posUV)
 {
     m_posUV = posUV;
-    m_hsvSatMed = sqrt(uMed()*uMed()+vMed()*vMed());
+    m_hsvSatMed = sqrtf(uMed()*uMed()+vMed()*vMed());
 }
 
 

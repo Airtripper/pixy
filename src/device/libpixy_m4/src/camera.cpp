@@ -597,7 +597,7 @@ void cam_shadowCallback(const char *id, const uint8_t &val)
 void cam_loadParams()
 {
 	prm_add("Camera Brightness", PRM_FLAG_SLIDER, 
-		"@c Signature_Tuning @m 0 @M 255 Sets the average brightness of the camera, can be between 0 and 255 (default " STRINGIFY(CAM_BRIGHTNESS_DEFAULT) ")", UINT8(CAM_BRIGHTNESS_DEFAULT), END);
+		"@c Handy @m 0 @M 255 Sets the average brightness of the camera, can be between 0 and 255 (default " STRINGIFY(CAM_BRIGHTNESS_DEFAULT) ")", UINT8(CAM_BRIGHTNESS_DEFAULT), END);
 	prm_setShadowCallback("Camera Brightness", (ShadowCallback)cam_shadowCallback);
 
 	prm_add("Auto Exposure Correction", PRM_FLAG_ADVANCED | PRM_FLAG_CHECKBOX, 
@@ -608,7 +608,7 @@ void cam_loadParams()
 		"", UINT32(0), END);
 																		   
 	prm_add("Auto White Balance", PRM_FLAG_ADVANCED | PRM_FLAG_CHECKBOX, 
-		"@c Camera Enables/disables Auto White Balance. When this is set, AWB is enabled continuously. (default disabled)", UINT8(0), END);
+		"@c Handy Enables/disables Auto White Balance. When this is set, AWB is enabled continuously. (default disabled)", UINT8(0), END);
 	prm_setShadowCallback("Auto White Balance", (ShadowCallback)cam_shadowCallback);
 
 	prm_add("Auto White Balance on power-up", PRM_FLAG_ADVANCED | PRM_FLAG_CHECKBOX, 

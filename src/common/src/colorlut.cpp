@@ -16,9 +16,15 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#ifndef PIXY
-#include "debug.h"
+
+#ifdef PIXY
+ #include "pixy_init.h"
+ #include "misc.h"
+ #include "debug.h"
+#else
+ #include "debug.h" // this and the one above are not the same!
 #endif
+
 #include "colorlut.h"
 #include "calc.h"
 
@@ -326,8 +332,8 @@ int ColorLUT::generateSignature(const Frame8 &frame, const RectA &region, uint8_
     m_signatures[signum-1].m_type = 0;
 
     ip.reset();
-    m_expSigs[signum-1].init( ip);
-
+    accExpSig(signum).init( ip);
+/*
     // hgs evillive: check if still needed
     // set the cooked render mode filter pass indication highlight color
     uint32_t rm=0, gm=0, bm=0;
@@ -345,7 +351,7 @@ int ColorLUT::generateSignature(const Frame8 &frame, const RectA &region, uint8_
     bm/=cnt;
     //EXPLOG("hghlght %d => %d %d %d", cnt, rm, gm, bm);
     m_signatures[signum-1].m_rgb = rgbPack( rm, gm, bm);
-
+*/
     updateSignature(signum);
 
     return 0;
@@ -361,6 +367,9 @@ int ColorLUT::generateSignature(const Frame8 &frame, const Point16 &point, Point
     IterPixel ip(frame, points);
     iterate(&ip, m_signatures+signum-1);
 	m_signatures[signum-1].m_type = 0;
+
+    ip.reset();
+    accExpSig(signum).init( ip);
 
     updateSignature(signum);
 
@@ -407,37 +416,44 @@ int ColorLUT::setSignature(uint8_t signum, const ColorSignature &sig)
 
 int ColorLUT::generateLUT()
 {
+#ifdef PIXY
+    uint32_t timer;
+    setTimer(&timer);
+#endif
+
     int collisions = 0;
 
     clearLUT();
 
     if(m_useExpSigs){
 
+/*
         // check which signatures are active and set the experimental ones accordingly
         // evillive ... kind of ugly doing this here
         for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s)
             if(m_expSigs[s].isActive()) m_expSigs[s].setIsActive( m_signatures[s].m_uMin!=0 || m_signatures[s].m_uMax!=0);
+*/
 
         // loop with sufficient granularity thru rgb space
-        const int16_t stepSz = 3; // 255%3=0 !
+        const uint16_t stepSz = 3; // 255%3=0 !
 
-        for( int16_t r=0; r<=255; r+=stepSz){
-            for( int16_t g=0; g<=255; g+=stepSz){
-                for( int16_t b=0; b<=255; b+=stepSz){
+        for( uint16_t r=0; r<=255; r+=stepSz){
+            for( uint16_t g=0; g<=255; g+=stepSz){
+                for( uint16_t b=0; b<=255; b+=stepSz){
                     // determine the most probable signature by comparing distances in the u/v plane
                     float dstMin = 23.0;
                     uint8_t bestSigId = 0;
-                    for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s){
+                    for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
                         // check signature compatibility and calc the distance in the (u,v) plane
                         float u,v;
-                        const ExperimentalSignature& sig = m_expSigs[s];
+                        const ExperimentalSignature& sig = expSig(s);
                         if( sig.isRgbAccepted(r,g,b, u,v)){
                             float du = u-sig.uMed();
                             float dv = v-sig.vMed();
-                            float dst = sqrt(du*du+dv*dv);
+                            float dst = sqrtf(du*du+dv*dv);
                             if(dst<dstMin){
                                 dstMin=dst;
-                                bestSigId=s+1;
+                                bestSigId=s;
                             }
                         }
                     }
@@ -471,6 +487,10 @@ int ColorLUT::generateLUT()
                         }
                     }
                 }
+
+#ifdef PIXY
+                g_chirpUsb->service(); // keep alive
+#endif
             }
         }
     }
@@ -554,6 +574,11 @@ int ColorLUT::generateLUT()
         EXPLOG(str);
     }
 #endif
+
+#ifdef PIXY
+    DBG("genLUT %d %dms", m_useExpSigs, (getTimer(timer)+500)/1000);
+#endif
+
     return 0;
 }
 
@@ -623,7 +648,7 @@ float ColorLUT::testRegion(const RectA &region, const Frame8 &frame, UVPixel *me
     for (i=0, test=0; i<endpoint; i+=CL_GROW_INC)
     {
         getMean(subRegion, frame, &subMean);
-        distance = sqrt((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
+        distance = sqrtf((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
         if ((uint32_t)distance<m_maxDist)
         {
             int32_t n = points->size();

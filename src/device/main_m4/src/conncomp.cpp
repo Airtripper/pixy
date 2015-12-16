@@ -120,6 +120,7 @@ static ChirpProc g_getRLSFrameM0 = -1;
 
 int cc_loadLut(void)
 {
+	DBG("ldLUT 0");
 	int i, res;
 	uint32_t len;
 	char id[32];
@@ -134,16 +135,21 @@ int cc_loadLut(void)
 			return res;
 		g_blobs->m_clut.setSignature(i, *psig);
 
-		sprintf(id, "eSigPos%d", i);
+		DBG("load esig%d",i);
+		sprintf(id, parName_eSigPos, i);
 		// get signature and add to color lut
 		ExpSigPos* eSig;
 		res = prm_get(id, &len, &eSig, END);
-		if (res<0)
+		if (res<0){
+			DBG("Ouch %i",res);
 			return res;
+		}
 		g_blobs->m_clut.accExpSig(i).setPosUV(*eSig);
+		DBG("ok %.2f %.2f", g_blobs->m_clut.expSig(i).uMed(), g_blobs->m_clut.expSig(i).vMed() );
 	}
-
+	DBG("loadLUT genLUT %d",g_blobs->m_clut.m_useExpSigs);
 	g_blobs->m_clut.generateLUT();
+	DBG("ok");
 	// go ahead and flush since we've changed things
 	g_qqueue->flush();
 
@@ -169,46 +175,55 @@ void cc_shadowCallback(const char *id, const float &val)
 }
 
 void relut(){
-	if (exec_pause()) // pause M0, but only generate LUT if we're running
-	{
-		// generate lut while M0 is paused
-		g_blobs->m_clut.generateLUT();
-		exec_resume();
-	}
+	 DBG("relut?");
+    if (exec_pause()) // pause M0, but only generate LUT if we're running
+    {
+        // generate lut while M0 is paused
+    	DBG("yes");
+    	g_blobs->m_clut.generateLUT();
+        exec_resume();
+        DBG("ok");
+    }
 }
 void eSigUse_shadowCallback(const char *id, const uint8_t &val){
-	g_blobs->m_clut.m_useExpSigs=val;
-	relut();
+    g_blobs->m_clut.m_useExpSigs=val;
+    relut();
 }
 void eSigAct_shadowCallback(const char *id, const uint8_t &val){
-	uint8_t signum = id[4]-'0'; // extract signature number
-	g_blobs->m_clut.accExpSig(signum).setIsActive(val);
-	relut();
+    uint8_t signum = id[4]-'0'; // extract signature number
+    g_blobs->m_clut.accExpSig(signum).setIsActive(val);
+    DBG("ACT %i %i",signum,val);
+    relut();
 }
 void eSigHue_shadowCallback(const char *id, const float &val){
-	uint8_t signum = id[4]-'0'; // extract signature number
-	g_blobs->m_clut.accExpSig(signum).setHsvHueRange(val);
-	relut();
+    uint8_t signum = id[4]-'0'; // extract signature number
+    g_blobs->m_clut.accExpSig(signum).setHsvHueRange(val);
+    DBG("HUE %i %.1f",signum,val);
+    relut();
 }
 void eSigSatMin_shadowCallback(const char *id, const float &val){
-	uint8_t signum = id[4]-'0'; // extract signature number
-	g_blobs->m_clut.accExpSig(signum).setHsvSatMin(val);
-	relut();
+    uint8_t signum = id[4]-'0'; // extract signature number
+    g_blobs->m_clut.accExpSig(signum).setHsvSatMin(val);
+    DBG("Smin %i %.1f",signum,val);
+    relut();
 }
 void eSigSatMax_shadowCallback(const char *id, const float &val){
-	uint8_t signum = id[4]-'0'; // extract signature number
-	g_blobs->m_clut.accExpSig(signum).setHsvSatMax(val);
-	relut();
+    uint8_t signum = id[4]-'0'; // extract signature number
+    g_blobs->m_clut.accExpSig(signum).setHsvSatMax(val);
+    DBG("Smax %i %.1f",signum,val);
+    relut();
 }
 void eSigValMin_shadowCallback(const char *id, const float &val){
-	uint8_t signum = id[4]-'0'; // extract signature number
-	g_blobs->m_clut.accExpSig(signum).setHsvValMin(val);
-	relut();
+    uint8_t signum = id[4]-'0'; // extract signature number
+    g_blobs->m_clut.accExpSig(signum).setHsvValMin(val);
+    DBG("Vmin %i %.1f",signum,val);
+    relut();
 }
 void eSigValMax_shadowCallback(const char *id, const float &val){
-	uint8_t signum = id[4]-'0'; // extract signature number
-	g_blobs->m_clut.accExpSig(signum).setHsvValMax(val);
-	relut();
+    uint8_t signum = id[4]-'0'; // extract signature number
+    g_blobs->m_clut.accExpSig(signum).setHsvValMax(val);
+    DBG("Vmax %i %.1f",signum,val);
+    relut();
 }
 
 
@@ -235,6 +250,8 @@ void cc_loadParams(void)
 	char id[32], desc[100];
 	float range;
 
+	DBG("ldPrm 0");
+
 	// set up signatures, and ranges, load later
 	for (i=1; i<=CL_NUM_SIGNATURES; i++)
 	{
@@ -258,66 +275,70 @@ void cc_loadParams(void)
 
 	// others -----
 
-	sprintf(id, "Use Experimental Signatures");
-	sprintf(desc, "@c eSig Use experimental signatures.");
+	sprintf(id, parName_eSigUse);
+	sprintf(desc, "@c Handy Use experimental signatures.");
 	prm_add(id, PRM_FLAG_ADVANCED | PRM_FLAG_CHECKBOX, desc, UINT8(0), END);
-	bool valB;
+	uint8_t valB;
 	prm_get(id, &valB, END);
 	g_blobs->m_clut.m_useExpSigs=valB;
 	prm_setShadowCallback(id, (ShadowCallback)eSigUse_shadowCallback);
 
 	for (i=1; i<=CL_NUM_SIGNATURES; i++){
 
+		DBG("add esig %i",i);
+
 		ExpSigPos espDummy;
 		float valF;
-		bool valB;
+		uint8_t valB;
 
-		sprintf(id, "eSigPos%d", i);
+		sprintf(id, parName_eSigPos, i);
 		sprintf(desc, "eSigPos");
 		// add if it doesn't exist yet
 		prm_add(id, PRM_FLAG_INTERNAL, desc, INTS8(sizeof(ExpSigPos), &espDummy), END);
 
-		sprintf(id, "eSig%d Active", i);
-		sprintf(desc, "@c eSig Activates this signature.");
+		sprintf(id, parName_eSigAct, i);
+		sprintf(desc, "@c eSig%d Activates this signature.",i);
 		prm_add(id, PRM_FLAG_ADVANCED | PRM_FLAG_CHECKBOX, desc, UINT8(0), END);
 		prm_get(id, &valB, END);
 		g_blobs->m_clut.accExpSig(i).setIsActive(valB);
 		prm_setShadowCallback(id, (ShadowCallback)eSigAct_shadowCallback);
 
-		sprintf(id, "eSig%d HueRange", i);
-		sprintf(desc, "@c eSig @m 0.0 @M 30.0 Sets HSV hue range [degree].");
-		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(5.0f), END);
+		sprintf(id, parName_eSigHueRng, i);
+		sprintf(desc, "@c eSig%d @m 0.0 @M 15.0 Sets HSV hue range [degree].",i);
+		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(1.0f), END);
 		prm_get(id, &valF, END);
 		g_blobs->m_clut.accExpSig(i).setHsvHueRange(valF);
 		prm_setShadowCallback(id, (ShadowCallback)eSigHue_shadowCallback);
 
-		sprintf(id, "eSig%d SatMin", i);
-		sprintf(desc, "@c eSig @m 0.0 @M 1.0 Sets HSV saturation min.");
-		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(0.2f), END);
+		sprintf(id, parName_eSigSatMin, i);
+		sprintf(desc, "@c eSig%d @m 0.0 @M 1.0 Sets HSV saturation min.",i);
+		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(0.0f), END);
 		prm_get(id, &valF, END);
 		g_blobs->m_clut.accExpSig(i).setHsvSatMin(valF);
 		prm_setShadowCallback(id, (ShadowCallback)eSigSatMin_shadowCallback);
 
-		sprintf(id, "eSig%d SatMax", i);
-		sprintf(desc, "@c eSig @m 0.0 @M 1.0 Sets HSV saturation max.");
-		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(1.0f), END);
+		sprintf(id, parName_eSigSatMax, i);
+		sprintf(desc, "@c eSig%d @m 0.0 @M 1.0 Sets HSV saturation max.",i);
+		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(0.05f), END);
 		prm_get(id, &valF, END);
 		g_blobs->m_clut.accExpSig(i).setHsvSatMax(valF);
 		prm_setShadowCallback(id, (ShadowCallback)eSigSatMax_shadowCallback);
 
-		sprintf(id, "eSig%d ValMin", i);
-		sprintf(desc, "@c eSig @m 0.0 @M 1.0 Sets HSV value min.");
-		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(0.2f), END);
+		sprintf(id, parName_eSigValMin, i);
+		sprintf(desc, "@c eSig%d @m 0.0 @M 1.0 Sets HSV value min.",i);
+		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(0.95f), END);
 		prm_get(id, &valF, END);
 		g_blobs->m_clut.accExpSig(i).setHsvValMin(valF);
 		prm_setShadowCallback(id, (ShadowCallback)eSigValMin_shadowCallback);
 
-		sprintf(id, "eSig%d ValMax", i);
-		sprintf(desc, "@c eSig @m 0.0 @M 1.0 Sets HSV value max.");
+		sprintf(id, parName_eSigValMax, i);
+		sprintf(desc, "@c eSig%d @m 0.0 @M 1.0 Sets HSV value max.",i);
 		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(1.0f), END);
 		prm_get(id, &valF, END);
 		g_blobs->m_clut.accExpSig(i).setHsvValMax(valF);
 		prm_setShadowCallback(id, (ShadowCallback)eSigValMax_shadowCallback);
+
+		DBG("ok");
 	}
 
 
@@ -337,17 +358,19 @@ void cc_loadParams(void)
 	prm_setShadowCallback("LED brightness", (ShadowCallback)cc_ledBrightnessCallback);
 
 	prm_add("Max blocks", 0, 
-		"@c Blocks Sets the maximum total blocks sent per frame. (default 1000)", UINT16(1000), END);
+		"@c Handy Sets the maximum total blocks sent per frame. (default 1000)", UINT16(1000), END);
 	prm_add("Max blocks per signature", 0, 
-		"@c Blocks Sets the maximum blocks for each color signature sent for each frame. (default 1000)", UINT16(1000), END);
+		"@c Handy Sets the maximum blocks for each color signature sent for each frame. (default 1000)", UINT16(1000), END);
 	prm_add("Min block area", 0, 
-		"@c Blocks Sets the minimum required area in pixels for a block.  Blocks with less area won't be sent. (default 20)", UINT32(20), END);
+		"@c Handy Sets the minimum required area in pixels for a block.  Blocks with less area won't be sent. (default 20)", UINT32(20), END);
 
 	// load
 	uint8_t ccMode;
 	uint16_t maxBlobs, maxBlobsPerModel;
 	uint32_t minArea, growDist;
 	float miny, ccGain;
+
+	DBG("ldPrm 1");
 
 	prm_get("Max blocks", &maxBlobs, END);
 	prm_get("Max blocks per signature", &maxBlobsPerModel, END);
@@ -363,53 +386,67 @@ void cc_loadParams(void)
 	g_blobs->m_clut.setGrowDist(growDist);
 	led_setMaxCurrent(g_ledBrightness);
 	
+	DBG("ldPrm 2");
+
 	cc_loadLut();
+
+	DBG("ldPrm 3");
 }
 
 int cc_init(Chirp *chirp)
 {
+	DBG("Init 0");
 	g_qqueue = new Qqueue;
 	g_blobs = new Blobs(g_qqueue, LUT_MEMORY);
 
+	DBG("Init 1");
 	chirp->registerModule(g_module);	
 
+	DBG("Init 2");
 	g_getRLSFrameM0 = g_chirpM0->getProc("getRLSFrame", NULL);
 
-	if (g_getRLSFrameM0<0)
+	if (g_getRLSFrameM0<0){
+		DBG("Init Ouch");
 		return -1;
-
+	}
+	DBG("Init 3");
 	cc_loadParams(); // setup default vals and load parameters
+	DBG("Init 4");
 
 	return 0;
 }
 
-void saveNactExpSig(uint8_t idx){
+void saveNactivateExpSig(uint8_t idx){
+
+	DBG("saveNact esig%d",idx);
 
 	const int len=32;
 	char id[32];
 
 	const ExperimentalSignature& eSig = g_blobs->m_clut.expSig(idx);
 
-	snprintf(id, len, "eSigPos%d", idx);
+	snprintf(id, len, parName_eSigPos, idx);
 	prm_set(id, INTS8(sizeof(ExpSigPos), &(eSig.posUV())), END);
 
-	snprintf(id, len, "eSigAct%d", idx);
+	snprintf(id, len, parName_eSigAct, idx);
 	prm_set(id, UINT8(1), END);
 
-	snprintf(id, len, "eSigHue%d", idx);
+	snprintf(id, len, parName_eSigHueRng, idx);
 	prm_set(id, FLT32(eSig.hsvHueRange()), END);
 
-	snprintf(id, len, "eSigSatMin%d", idx);
+	snprintf(id, len, parName_eSigSatMin, idx);
 	prm_set(id, FLT32(eSig.hsvSatMin()), END);
 
-	snprintf(id, len, "eSigSatMax%d", idx);
+	snprintf(id, len, parName_eSigSatMax, idx);
 	prm_set(id, FLT32(eSig.hsvSatMax()), END);
 
-	snprintf(id, len, "eSigValMin%d", idx);
+	snprintf(id, len, parName_eSigValMin, idx);
 	prm_set(id, FLT32(eSig.hsvValMin()), END);
 
-	snprintf(id, len, "eSigValMax%d", idx);
+	snprintf(id, len, parName_eSigValMax, idx);
 	prm_set(id, FLT32(eSig.hsvValMax()), END);
+
+	DBG("ok");
 }
 
 
@@ -441,7 +478,7 @@ int32_t cc_setSigRegion(const uint32_t &type, const uint8_t &signum, const uint1
 	sprintf(id, "signature%d", signum);
 	prm_set(id, INTS8(sizeof(ColorSignature), sig), END);
 
-	saveNactExpSig(signum);
+	saveNactivateExpSig(signum);
 
 	cc_loadLut();
 
@@ -481,7 +518,7 @@ int32_t cc_setSigPoint(const uint32_t &type, const uint8_t &signum, const uint16
 	sprintf(id, "signature%d", signum);
 	prm_set(id, INTS8(sizeof(ColorSignature), sig), END);
 
-	saveNactExpSig(signum);
+	saveNactivateExpSig(signum);
 
 	cc_loadLut();
 
@@ -506,7 +543,7 @@ int32_t cc_clearSig(const uint8_t &signum, Chirp *chirp)
 	res = prm_set(id, INTS8(sizeof(ColorSignature), &sig), END);
 
 	// just deactivate the exp. sig
-	sprintf(id, "eSigAct%d", signum);
+	sprintf(id, parName_eSigAct, signum);
 	prm_set(id, UINT8(0), END); // don't know what prm_set returns, ... docu?
 
 	// update lut
@@ -532,7 +569,7 @@ int32_t cc_clearAllSig(Chirp *chirp)
    		res = prm_set(id, INTS8(sizeof(ColorSignature), &sig), END);
 
    		// just deactivate the exp. sig
-   		sprintf(id, "eSigAct%d", signum);
+   		sprintf(id, parName_eSigAct, signum);
    		prm_set(id, UINT8(0), END); // don't know what prm_set returns, ... docu?
 
    		if (res<0)

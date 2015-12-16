@@ -226,7 +226,7 @@ int8_t g_programChirp = -1;
 int32_t g_execArgChirp = 0;
 uint8_t g_override = 0;
 int32_t g_execArg = 0;  // this arg mechanism is lame... should introduce an argv type mechanism 
-uint8_t g_debug = 0;
+uint8_t g_debug = 1;
 
 static ChirpProc g_runM0 = -1;
 static ChirpProc g_runningM0 = -1;
@@ -466,6 +466,7 @@ static void loadParams()
 		"@c Expert Sets the debug level for the firmware. (default 0)", UINT8(0), END);
 	
 	prm_get("Debug", &g_debug, END);
+	g_debug=1;
 }
 
 void exec_loadParams()

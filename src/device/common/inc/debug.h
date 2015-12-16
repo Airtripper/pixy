@@ -32,6 +32,7 @@
 
 #ifdef __cplusplus  
 extern uint8_t g_debug;
+extern void cprintf(const char *format, ...);
 
 #define DBG(...)            if (g_debug) cprintf(__VA_ARGS__)
 #define DBGL(level, ...)    if (g_debug>=level) cprintf(__VA_ARGS__)

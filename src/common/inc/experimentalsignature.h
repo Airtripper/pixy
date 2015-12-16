@@ -19,18 +19,41 @@ const float pi = 3.1415926536f;
 const float d2r = pi/180.0f;
 const float r2d = 180.0f/pi;
 
+// parameter names or their format strings
+extern const char* parName_eSigUse;
+extern const char* parName_eSigPos;
+extern const char* parName_eSigAct;
+extern const char* parName_eSigHueRng;
+extern const char* parName_eSigSatMin;
+extern const char* parName_eSigSatMax;
+extern const char* parName_eSigValMin;
+extern const char* parName_eSigValMax;
+
 // The color signatures median (u,v) position in the chroma plane
 // Used in ExperimentalSignature class below.
 // Separated for storage as hidden parameter.
 struct ExpSigPos{
+    ExpSigPos():m_uMed(0.0f),m_vMed(0.0f){}
     float m_uMed;
     float m_vMed;
 };
 
 /// experimental signatures
 /// the signature's color model related stuff
-class ExperimentalSignature
-{
+class ExperimentalSignature{
+
+    /// median (u,v) position of the signature training set
+    ExpSigPos m_posUV;
+    float m_hsvSatMed; // hsv saturation of the signatures median anchor, in fact its its length |u,v|
+    /// acceptance ranges (HSV)
+    float m_hsvValMin;
+    float m_hsvValMax;
+    float m_hsvSatMin;
+    float m_hsvSatMax;
+    float m_hsvCosDeltaHueMin;
+    float m_hsvHueRange;
+    bool m_isActive;
+
 public:
 
     ExperimentalSignature();
@@ -43,7 +66,7 @@ public:
     bool isRgbAccepted( float r, float g, float b, float& u, float& v) const;
 
     /// same as above, but with integer r, g and b parameters [0..255]
-    inline bool isRgbAccepted( int16_t r, int16_t g, int16_t b, float& u, float& v) const {
+    inline bool isRgbAccepted( uint16_t r, uint16_t g, uint16_t b, float& u, float& v) const {
         return m_isActive && isRgbAccepted( r*rgbNorm, g*rgbNorm, b*rgbNorm,  u, v);
     }
 
@@ -59,9 +82,6 @@ public:
     inline static void translateRGB( uint8_t r, uint8_t g, uint8_t b, float& u, float& v, float& hsvSat, float& hsvVal)  {
         return translateRGB( r*rgbNorm, g*rgbNorm, b*rgbNorm,  u, v, hsvSat, hsvVal);
     }
-
-
-public:
 
     float hsvValMin() const;
     void setHsvValMin(float hsvValMin);
@@ -88,18 +108,6 @@ public:
     const ExpSigPos& posUV() const{return m_posUV;}
     void setPosUV(const ExpSigPos &posUV);
 
-private:
-    // median (u,v) position of the signature training set
-    ExpSigPos m_posUV;
-    float m_hsvSatMed; // hsv saturation of the signatures median anchor, in fact its its length |u,v|
-    // acceptance ranges (HSV)
-    float m_hsvValMin;
-    float m_hsvValMax;
-    float m_hsvSatMin;
-    float m_hsvSatMax;
-    float m_hsvCosDeltaHueMin;
-    float m_hsvHueRange;
-    bool m_isActive;
 };
 
 
@@ -150,7 +158,7 @@ struct Histo{
     float sigma(){
         float var = m_sum2 - m_sum*m_sum/m_n; // acuracy? I should have read D.K.
         var /= m_n-1;
-        return var>0 ? sqrt(var) : 0.0f;
+        return var>0 ? sqrtf(var) : 0.0f;
     }
 
     /// get value that corresponds to given value [0,1] of the cumulative distribution

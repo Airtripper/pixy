@@ -17,6 +17,7 @@
 #include "debug.h"
 #else
 #include "pixy_init.h"
+#include "misc.h"
 #endif
 
 #include "blobs.h"
@@ -77,7 +78,7 @@ Blobs::~Blobs()
 
 int Blobs::handleSegment(uint8_t signature, uint16_t row, uint16_t startCol, uint16_t length)
 {
-	SSegment s;
+    SSegment s;
 
     s.model = signature;
     s.row = row;
@@ -105,6 +106,10 @@ int Blobs::handleSegment(uint8_t signature, uint16_t row, uint16_t startCol, uin
 // 4: bottom Y edge
 int Blobs::runlengthAnalysis()
 {
+#ifdef PIXY
+    uint32_t timer;
+#endif
+
     int32_t row=-1, icount=0;
     uint32_t startCol, sig, prevSig, prevStartCol, segmentStartCol, segmentEndCol, segmentSig=0;
     bool merge;
@@ -123,7 +128,9 @@ int Blobs::runlengthAnalysis()
 #ifndef PIXY
     m_numQvals = 0;
 #endif
-
+#ifdef PIXY
+    setTimer(&timer);
+#endif
     while(1)
     {
         while (m_qq->dequeue(&qval)==0);
@@ -144,11 +151,21 @@ int Blobs::runlengthAnalysis()
 #ifndef PIXY
             m_qvals[m_numQvals++] = 0;
 #else
-			if (icount++==5) // an interleave of every 5 lines or about every 175us seems good
+            if (icount++==5) // an interleave of every 5 lines or about every 175us seems good
 			{
-				g_chirpUsb->service();
+                g_chirpUsb->service();
 				icount = 0;
 			}
+            /*
+            const uint32_t lnLim=20;
+            if(lnCnt++==lnLim){
+                uint32_t t=(getTimer(timer)*5)/lnLim;
+                DBG("RLA %d %d",m_clut.m_useExpSigs,t);
+                setTimer(&timer);
+                lnCnt=0;
+            }
+            */
+
 #endif
             continue;
         }
@@ -172,7 +189,7 @@ int Blobs::runlengthAnalysis()
             b*=rgbNorm*0.5f;
             g*=rgbNorm*0.5f;
 
-            /* seen out of range rgb vals. Caused by float inaccuracy or the g1/g2 bayer mess
+            /* have seen out of range rgb vals. Caused by float inaccuracy or the g1/g2 bayer mess
             const float l=0.0f;
             const float h=1.0f;
             if(r<l || r>h || g<l || g>h || b<l || b>h)
@@ -180,7 +197,7 @@ int Blobs::runlengthAnalysis()
             */
 
             // determine the most probable signature by comparing distances in the (u,v) plane
-            float dstMin = 23.0;
+            float dstMin = 23.0f;
             uint8_t bestSigId = 0;
             uint8_t sigId = 0;
             while(sigBitMap){
@@ -199,7 +216,7 @@ int Blobs::runlengthAnalysis()
                 if( es.isRgbAccepted(r,g,b, u,v)){
                     float du = u-es.uMed();
                     float dv = v-es.vMed();
-                    float dst = sqrt( du*du + dv*dv);
+                    float dst = sqrtf( du*du + dv*dv);
                     if(dst<dstMin){
                         dstMin=dst;
                         bestSigId=sigId;
@@ -278,6 +295,10 @@ int Blobs::runlengthAnalysis()
         lutSel_allCnt = lutSel_koCnt = lutSel_frmCnt = 0;
     }
 #endif
+#ifdef PIXY
+    DBG("RLA %d %d",m_clut.m_useExpSigs, getTimer(timer));
+#endif
+
     if (qval.m_col==0xfffe) // error code, queue overrun
 		return -1;
 	return 0;
@@ -828,7 +849,7 @@ int16_t Blobs::angle(BlobA *blob0, BlobA *blob1)
     bcx = (blob1->m_right + blob1->m_left)/2;
     bcy = (blob1->m_bottom + blob1->m_top)/2;
 
-    res = atan2((float)(acy-bcy), (float)(bcx-acx))*180/3.1415f;
+    res = atan2f((float)(acy-bcy), (float)(bcx-acx))*180/3.1415f;
 
     return (int16_t)res;
 }
