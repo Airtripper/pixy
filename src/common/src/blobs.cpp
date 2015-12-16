@@ -108,6 +108,9 @@ int Blobs::runlengthAnalysis()
 {
 #ifdef PIXY
     uint32_t timer;
+    static uint32_t tmSum=0;
+    static uint32_t tmCnt=0;
+    static uint32_t tmMax=0;
 #endif
 
     int32_t row=-1, icount=0;
@@ -127,9 +130,6 @@ int Blobs::runlengthAnalysis()
 
 #ifndef PIXY
     m_numQvals = 0;
-#endif
-#ifdef PIXY
-    setTimer(&timer);
 #endif
     while(1)
     {
@@ -170,6 +170,11 @@ int Blobs::runlengthAnalysis()
             continue;
         }
 
+#ifdef PIXY
+        setTimer(&timer);
+#endif
+
+
         bool qvalAccepted = false;
 
         // decode the M0 preselected signature id bitmap
@@ -189,15 +194,8 @@ int Blobs::runlengthAnalysis()
             b*=rgbNorm*0.5f;
             g*=rgbNorm*0.5f;
 
-            /* have seen out of range rgb vals. Caused by float inaccuracy or the g1/g2 bayer mess
-            const float l=0.0f;
-            const float h=1.0f;
-            if(r<l || r>h || g<l || g>h || b<l || b>h)
-                printf("%i %i %i => %f %f %f\n", qval.m_u,qval.m_v,qval.m_y, r,g,b);
-            */
-
             // determine the most probable signature by comparing distances in the (u,v) plane
-            float dstMin = 23.0f;
+            float dst2Min = 23.0f;
             uint8_t bestSigId = 0;
             uint8_t sigId = 0;
             while(sigBitMap){
@@ -213,12 +211,12 @@ int Blobs::runlengthAnalysis()
                 // check signature compatibility and calc the distance in the (u,v) plane
                 float u,v;
                 const ExperimentalSignature& es = m_clut.expSig(sigId);
-                if( es.isRgbAccepted(r,g,b, u,v)){
+                if( es.isActive() && es.isRgbAccepted(r,g,b, u,v)){
                     float du = u-es.uMed();
                     float dv = v-es.vMed();
-                    float dst = sqrtf( du*du + dv*dv);
-                    if(dst<dstMin){
-                        dstMin=dst;
+                    float dst2 = du*du + dv*dv;
+                    if(dst2<dst2Min){
+                        dst2Min=dst2;
                         bestSigId=sigId;
                     }
                 }
@@ -253,11 +251,24 @@ int Blobs::runlengthAnalysis()
                            m_clut.m_runtimeSigs[sig-1].m_vMin<v && v<m_clut.m_runtimeSigs[sig-1].m_vMax &&
                            c>=(int32_t)m_clut.m_miny;
         }
+#ifdef PIXY
+        uint32_t tm=getTimer(timer);
+        tmSum+=tm;
+        if(tm>tmMax)tmMax=tm;
+        const uint32_t nLoop=500000;
+        if(++tmCnt==nLoop){
+            DBG("RLA exp=%d avg=%.1fus max=%dus",m_clut.m_useExpSigs, float(tmSum)/nLoop, tmMax);
+            tmCnt=tmSum=tmMax=0;
+        }
+#endif
+
+
 #ifndef PIXY
         // log LUT preselection performance
         ++lutSel_allCnt;
         if(!qvalAccepted) ++lutSel_koCnt;
 #endif
+
         if (qvalAccepted)
         {
             qval.m_col >>= 7;
@@ -288,15 +299,13 @@ int Blobs::runlengthAnalysis()
         }
     }
 	endFrame();
+
 #ifndef PIXY
     // log LUT preselection performance
     if(++lutSel_frmCnt>=lutSel_nFrms){
         EXPLOG("LUT pre-selected/frame %u %.1f%% false pos", lutSel_allCnt/lutSel_nFrms, float(lutSel_koCnt)/lutSel_allCnt*100.0f);
         lutSel_allCnt = lutSel_koCnt = lutSel_frmCnt = 0;
     }
-#endif
-#ifdef PIXY
-    DBG("RLA %d %d",m_clut.m_useExpSigs, getTimer(timer));
 #endif
 
     if (qval.m_col==0xfffe) // error code, queue overrun

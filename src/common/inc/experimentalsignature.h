@@ -9,7 +9,7 @@ class IterPixel;
 
 // some constants
 const float rgbNorm = 1.0f / 255.0f;
-const float yuv_wr = 0.299f;
+const float yuv_wr = 0.299f;  // classic YUV params see wikipedia
 const float yuv_wb = 0.114f;
 const float yuv_wg = 1.0f - yuv_wr - yuv_wb;
 const float yuv_un = 1.0f/(1.0f-yuv_wb);
@@ -18,6 +18,7 @@ const float bite = 1e-6f; // something small for float comparisons
 const float pi = 3.1415926536f;
 const float d2r = pi/180.0f;
 const float r2d = 180.0f/pi;
+const float hueDeltaLim = 23.0f-bite; // a hue delta above 30 deg? => deactivate the limit and accept the full hue circle
 
 // parameter names or their format strings
 extern const char* parName_eSigUse;
@@ -63,11 +64,13 @@ public:
     /// The interface is a fat one as this function is also used to calculate the reference parameters
     /// u[-1..1],v[-1..1],sat[0..1] and val [0..1]
     /// r,g,b [0.0,1.0]
+    /// Check if signature is activate before calling!
     bool isRgbAccepted( float r, float g, float b, float& u, float& v) const;
 
     /// same as above, but with integer r, g and b parameters [0..255]
+    /// Check if signature is activate before calling!
     inline bool isRgbAccepted( uint16_t r, uint16_t g, uint16_t b, float& u, float& v) const {
-        return m_isActive && isRgbAccepted( r*rgbNorm, g*rgbNorm, b*rgbNorm,  u, v);
+        return isRgbAccepted( r*rgbNorm, g*rgbNorm, b*rgbNorm,  u, v);
     }
 
     /// initialize this signature from the given pixel iterator
@@ -89,7 +92,7 @@ public:
     float hsvValMax() const;
     void setHsvValMax(float hsvValMax);
 
-    bool isActive() const;
+    inline bool isActive() const {return m_isActive;}
     void setIsActive(bool isActive);
 
     float hsvHueRange() const;
@@ -114,7 +117,7 @@ public:
 /// A simple histogram class
 struct Histo{
 
-    static const uint16_t s_nBins=32;
+    static const uint16_t s_nBins=64;
     uint16_t m_bins[s_nBins];
     uint16_t m_low;
     float m_min;

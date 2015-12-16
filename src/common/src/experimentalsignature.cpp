@@ -46,8 +46,6 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // this is more or less a duplicate of RuntimeSignature::calculateUV
     // clean this up, ... maybe at least some inline functions
 
-    if(!m_isActive)return false;
-
     // calc rgb min and max
     float hsvVal = g; // aka rgbMax
     float rgbMin = g;
@@ -56,33 +54,37 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     if(b<rgbMin)rgbMin=b;
 
     // might happen, floating point or g1/g2 bayer mess caused
-    if(hsvVal>1.0f){
-        hsvVal=1.0f;
-        //EXPLOG("val ouch");
-    }
+//    if(hsvVal>1.0f){
+//        hsvVal=1.0f;
+//        //EXPLOG("val ouch");
+//    }
 
     // bail out early if not within hsv value limits
-    // and a hopefully correct handling for black pixels (division by zero prevention)
-    if( hsvVal<m_hsvValMin+bite || hsvVal>m_hsvValMax ){
+    // and handling of black pixels (division by zero prevention)
+    if( hsvVal<m_hsvValMin+bite || (hsvVal>m_hsvValMax && hsvVal<=1.0f) ){
         u=v=0.0f;
-        return hsvVal+m_hsvValMin+m_hsvSatMin < bite;
+        return hsvVal+m_hsvValMin+m_hsvSatMin < bite;  // return true if signature accepts black
     }
 
-    float hsvValInv=1.0f/hsvVal;
-    float hsvSat = (hsvVal-rgbMin) * hsvValInv;
+    //float hsvValInv=1.0f/hsvVal;                     // save a division
+    //float hsvSat = float(hsvVal-rgbMin) * hsvValInv; // save a division
+    float hsvSat = float(hsvVal-rgbMin);               // save a division
 
-    // might happen (?), floating point or g1/g2 bayer mess caused
-    if(hsvSat>1.0f){
-        hsvSat=1.0f;
-        //EXPLOG("sat ouch");
-    }
+    // might happen (?), floating point or g1/g2 bayer mess caused ... handled in the condition below
+//    if(hsvSat>1.0f){
+//        hsvSat=1.0f;
+//        //EXPLOG("sat ouch");
+//    }
 
     // bail out early if not within hsv saturation limits
-    // and a hopefully correct handling for grey pixels (division by zero prevention)
-    if( hsvSat<m_hsvSatMin+bite || hsvSat>m_hsvSatMax ) {
+    // and handling of grey pixels (division by zero prevention)
+    //if( hsvSat<m_hsvSatMin+bite || (hsvSat>m_hsvSatMax && hsvSat<=1.0f) ) {
+    if( hsvSat<m_hsvSatMin*hsvVal+bite || hsvSat>m_hsvSatMax*hsvVal) {
         u=v=0;
-        return hsvSat+m_hsvSatMin<bite ;
+        return hsvSat+m_hsvSatMin<bite ; // return true if signature accepts 255 shades of grey ... :D
     }
+
+    float hsvValInv=1.0f/hsvVal;    // save a division
 
     // calc classic YUV luminance y
     float y = yuv_wr*r + yuv_wg*g + yuv_wb*b;
@@ -104,18 +106,20 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
 
     // We got here with with zero signature saturation => Accept the candidate
     // This bail out prevents a division by zero below.
-    // We could have bailed out earlier but we wanna return valid u and v values
+    // We could have bailed out earlier, but we wanna return valid u and v values
     if(m_hsvSatMed<bite)return true;
 
     // calculate cosine delta hue using dot product: (u,v)_sig . (u,v)_pix / |(u,v)_sig| / |(u,v)_pix|
     float cosHue = u*uMed() + v*vMed();
-    cosHue /= hsvSat * m_hsvSatMed;
+    //cosHue /= hsvSat * m_hsvSatMed; // save one division
 
     //if(cosHue>0.99) EXPLOG("u=%.2f v=%.2f um=%.2f vm=%.2f c=%.24f ", u,v,m_uMed ,m_vMed,cosHue);
 
     // Are we within HSV hue limits?
-    return cosHue>m_hsvCosDeltaHueMin;
+    // return cosHue>m_hsvCosDeltaHueMin; // save one division
+    return cosHue > m_hsvCosDeltaHueMin * hsvSat * m_hsvSatMed; // safe one division
 }
+
 
 void ExperimentalSignature::init( IterPixel& pixIter)
 {
@@ -169,10 +173,12 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     // saturation and hue selection cuts are defined by the values
     // for 5% and 95% of the cumulative distribution
     const float outLim = 0.05f;
-    m_hsvSatMin = satHist.X( outLim);
-    m_hsvSatMax = satHist.X( 1.0f-outLim);
+    m_hsvSatMin = satHist.X( outLim)-outLim;
+    if(m_hsvSatMin<0.0f) m_hsvSatMin=0.0f;
+    //m_hsvSatMax = satHist.X( 1.0f-outLim);
+    m_hsvSatMax = 1;
     m_hsvHueRange = 0.5f * ( hueHist.X(1.0f-outLim) - hueHist.X(outLim) );
-    m_hsvCosDeltaHueMin = cos( m_hsvHueRange );
+    m_hsvCosDeltaHueMin = cosf( m_hsvHueRange );
 
     // now have a closer look at the hue and sat distributions
     // their median should be within a 1 one sigma window arround the mean val
@@ -201,8 +207,8 @@ void ExperimentalSignature::init( IterPixel& pixIter)
 
     // and calculate the u, v and hue medians
     float hueMed=hueHist.X(0.5)+hueOff;
-    m_posUV.m_uMed = m_hsvSatMed*cos( hueMed);
-    m_posUV.m_vMed = m_hsvSatMed*sin( hueMed);
+    m_posUV.m_uMed = m_hsvSatMed*cosf( hueMed);
+    m_posUV.m_vMed = m_hsvSatMed*sinf( hueMed);
 #ifndef PIXY
     EXPLOG("init: uMed=%.2f vMed=%.2f satMed=%.2f satMin=%.2f satMax=%.2f hueMed=%.2f hueRng=%.2f hueCos=%.4f hueOff=%.2f",
            uMed(), vMed(), m_hsvSatMed, m_hsvSatMin, m_hsvSatMax, hueMed*r2d, m_hsvHueRange*r2d, m_hsvCosDeltaHueMin, hueOff*r2d );
@@ -274,12 +280,6 @@ void ExperimentalSignature::setHsvValMax(float hsvValMax)
     m_hsvValMax = hsvValMax;
 }
 
-
-bool ExperimentalSignature::isActive() const
-{
-    return m_isActive;
-}
-
 void ExperimentalSignature::setIsActive(bool isActive)
 {
     m_isActive = isActive;
@@ -293,8 +293,8 @@ float ExperimentalSignature::hsvHueRange() const
 
 void ExperimentalSignature::setHsvHueRange(float hsvHueRange)
 {
-    m_hsvHueRange = hsvHueRange*d2r;
-    m_hsvCosDeltaHueMin = cos(m_hsvHueRange);
+    m_hsvHueRange = hsvHueRange<hueDeltaLim ? hsvHueRange*d2r : pi;
+    m_hsvCosDeltaHueMin = cosf(m_hsvHueRange);
 }
 
 

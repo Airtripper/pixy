@@ -419,6 +419,10 @@ int ColorLUT::generateLUT()
 #ifdef PIXY
     uint32_t timer;
     setTimer(&timer);
+
+    const uint32_t keepAliveTmOut = 250000;
+    uint32_t keepAliveTmr;
+    setTimer(&timer);
 #endif
 
     int collisions = 0;
@@ -440,19 +444,26 @@ int ColorLUT::generateLUT()
         for( uint16_t r=0; r<=255; r+=stepSz){
             for( uint16_t g=0; g<=255; g+=stepSz){
                 for( uint16_t b=0; b<=255; b+=stepSz){
+
+#ifdef PIXY
+                    if(getTimer(keepAliveTmr)>keepAliveTmOut){
+                         g_chirpUsb->service(); // keep alive
+                         setTimer(&keepAliveTmr);
+                    }
+#endif
                     // determine the most probable signature by comparing distances in the u/v plane
-                    float dstMin = 23.0;
+                    float dst2Min = 23.0;
                     uint8_t bestSigId = 0;
                     for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
                         // check signature compatibility and calc the distance in the (u,v) plane
                         float u,v;
                         const ExperimentalSignature& sig = expSig(s);
-                        if( sig.isRgbAccepted(r,g,b, u,v)){
+                        if( sig.isActive() && sig.isRgbAccepted(r,g,b, u,v)){
                             float du = u-sig.uMed();
                             float dv = v-sig.vMed();
-                            float dst = sqrtf(du*du+dv*dv);
-                            if(dst<dstMin){
-                                dstMin=dst;
+                            float dst2 = du*du+dv*dv;
+                            if(dst2<dst2Min){
+                                dst2Min=dst2;
                                 bestSigId=s;
                             }
                         }
@@ -487,10 +498,6 @@ int ColorLUT::generateLUT()
                         }
                     }
                 }
-
-#ifdef PIXY
-                g_chirpUsb->service(); // keep alive
-#endif
             }
         }
     }

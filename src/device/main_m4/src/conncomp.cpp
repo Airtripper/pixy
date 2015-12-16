@@ -304,7 +304,7 @@ void cc_loadParams(void)
 		prm_setShadowCallback(id, (ShadowCallback)eSigAct_shadowCallback);
 
 		sprintf(id, parName_eSigHueRng, i);
-		sprintf(desc, "@c eSig%d @m 0.0 @M 15.0 Sets HSV hue range [degree].",i);
+		sprintf(desc, "@c eSig%d @m 0.0 @M %.1f Sets HSV hue range [degree]. Jumps to full hue circle on max setting", i, hueDeltaLim);
 		prm_add(id, PRM_FLAG_SLIDER, desc, FLT32(1.0f), END);
 		prm_get(id, &valF, END);
 		g_blobs->m_clut.accExpSig(i).setHsvHueRange(valF);
