@@ -416,6 +416,29 @@ int ColorLUT::setSignature(uint8_t signum, const ColorSignature &sig)
 
 int ColorLUT::generateLUT()
 {
+/*    #ifdef
+    {
+        float sumF = 0.0f;
+        const uint32_t nLoop = 100000;
+        uint32_t tm;
+
+        setTimer(&tm);
+        for(uint32_t i=1; i<=nLoop; ++i )sumF+=1.0f/float(i);
+        DBG("div %d %f", getTimer(tm), sumF);
+
+        sumF=0.0f;
+        setTimer(&tm);
+        for(uint32_t i=1; i<=nLoop; ++i )sumF+=sqrtf(float(i));
+        DBG("sqrtf %d %f", getTimer(tm), sumF);
+
+        sumF=0.0f;
+        setTimer(&tm);
+        for(uint32_t i=1; i<=nLoop; ++i )sumF+=vsqrtf(float(i));
+        DBG("vsqrtf %d %f", getTimer(tm), sumF);
+    }
+    #endif*/
+
+
 #ifdef PIXY
     uint32_t timer;
     setTimer(&timer);
@@ -538,9 +561,9 @@ int ColorLUT::generateLUT()
 
                             bin = (u<<CL_LUT_COMPONENT_SCALE)+ v;
 
-                            if(m_lut[bin] && m_lut[bin]!=sig+1 ) ++collisions;
+                            if(m_lut[bin] && m_lut[bin]!= (1<<sig) ) ++collisions;
 
-                            if (m_lut[bin]==0 || m_lut[bin] > 1<<sig){
+                            if (m_lut[bin]==0 || m_lut[bin] > (1<<sig) ){
                                 // lower index signatures have higher prio and kick lower prio signatures out of the LUT
                                 m_lut[bin] = 1<<sig;
 #ifdef PIXY // don't bail out in cooked mode as it would affect the collision counting
@@ -655,7 +678,11 @@ float ColorLUT::testRegion(const RectA &region, const Frame8 &frame, UVPixel *me
     for (i=0, test=0; i<endpoint; i+=CL_GROW_INC)
     {
         getMean(subRegion, frame, &subMean);
-        distance = sqrtf((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
+#ifdef PIXY
+    distance = vsqrtf((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
+#else
+    distance = sqrtf((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
+#endif
         if ((uint32_t)distance<m_maxDist)
         {
             int32_t n = points->size();

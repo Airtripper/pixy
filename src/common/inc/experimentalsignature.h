@@ -5,6 +5,10 @@
 #include <cstring>
 #include <math.h>
 
+#ifdef PIXY
+#include "misc.h"
+#endif
+
 class IterPixel;
 
 // some constants
@@ -161,7 +165,12 @@ struct Histo{
     float sigma(){
         float var = m_sum2 - m_sum*m_sum/m_n; // acuracy? I should have read D.K.
         var /= m_n-1;
-        return var>0 ? sqrtf(var) : 0.0f;
+
+#ifdef PIXY
+    return var>0 ? vsqrtf(var) : 0.0f;
+#else
+    return var>0 ? sqrtf(var) : 0.0f;
+#endif
     }
 
     /// get value that corresponds to given value [0,1] of the cumulative distribution

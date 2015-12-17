@@ -106,11 +106,25 @@ int Blobs::handleSegment(uint8_t signature, uint16_t row, uint16_t startCol, uin
 // 4: bottom Y edge
 int Blobs::runlengthAnalysis()
 {
-#ifdef PIXY
+#ifdef PIXYTIME
     uint32_t timer;
     static uint32_t tmSum=0;
     static uint32_t tmCnt=0;
     static uint32_t tmMax=0;
+
+    uint32_t timer2;
+    static uint32_t tm2Sum=0;
+    static uint32_t tm2Cnt=0;
+    static uint32_t tm2Max=0;
+
+    uint32_t timer3;
+    static uint32_t tm3Sum=0;
+    static uint32_t tm3Cnt=0;
+    static uint32_t tm3Max=0;
+
+    static int32_t stps = 5;
+
+    setTimer(&timer3);
 #endif
 
     int32_t row=-1, icount=0;
@@ -151,34 +165,49 @@ int Blobs::runlengthAnalysis()
 #ifndef PIXY
             m_qvals[m_numQvals++] = 0;
 #else
-            if (icount++==5) // an interleave of every 5 lines or about every 175us seems good
+            if (icount++>5) // an interleave of every 5 lines or about every 175us seems good ... (5*175)us ?
 			{
+                /*{
+                    uint32_t tm=getTimer(timer3);
+                    tm3Sum+=tm;
+                    if(tm>tm3Max)tm3Max=tm;
+                }
+
+                setTimer(&timer2);*/
+
                 g_chirpUsb->service();
-				icount = 0;
+                icount = 0;
+
+                /*uint32_t tm=getTimer(timer2);
+                tm2Sum+=tm;
+                if(tm>tm2Max)tm2Max=tm;
+                const uint32_t nLoop=5000;
+                if(++tm2Cnt==nLoop){
+                    DBG("CHP%d avg=%.1fus max=%dus", stps, float(tm2Sum)/nLoop, tm2Max);
+                    tm2Cnt=tm2Sum=tm2Max=0;
+                    DBG("CYC%d avg=%.1fus max=%dus", stps, float(tm3Sum)/nLoop, tm3Max);
+                    tm3Cnt=tm3Sum=tm3Max=0;
+                    stps = stps==1 ? 5 : 1;
+                }
+                setTimer(&timer3);*/
 			}
-            /*
-            const uint32_t lnLim=20;
-            if(lnCnt++==lnLim){
-                uint32_t t=(getTimer(timer)*5)/lnLim;
-                DBG("RLA %d %d",m_clut.m_useExpSigs,t);
-                setTimer(&timer);
-                lnCnt=0;
-            }
-            */
+
+
+
 
 #endif
             continue;
         }
 
 #ifdef PIXY
-        setTimer(&timer);
+        //setTimer(&timer);
 #endif
 
 
         bool qvalAccepted = false;
 
         // decode the M0 preselected signature id bitmap
-        uint8_t sigBitMap = qval.m_col & ((1<<CL_NUM_SIGNATURES)-1);
+        uint32_t sigBitMap = qval.m_col & ((1<<CL_NUM_SIGNATURES)-1);
 
         if(m_clut.m_useExpSigs)
         {
@@ -199,7 +228,11 @@ int Blobs::runlengthAnalysis()
             uint8_t bestSigId = 0;
             uint8_t sigId = 0;
             while(sigBitMap){
-
+#ifdef PIXY
+                uint32_t leadZeros = __CLZ(sigBitMap);
+                sigBitMap &= ~(0x80000000>>leadZeros);
+                sigId = 32-leadZeros;
+#else
                 // fetch next signature ID from the  bitmap
                 while( (sigBitMap&1)==0 ){
                     sigBitMap>>=1;
@@ -207,7 +240,7 @@ int Blobs::runlengthAnalysis()
                 }
                 sigBitMap>>=1;
                 ++sigId;
-
+#endif
                 // check signature compatibility and calc the distance in the (u,v) plane
                 float u,v;
                 const ExperimentalSignature& es = m_clut.expSig(sigId);
@@ -227,15 +260,17 @@ int Blobs::runlengthAnalysis()
         }
         else
         {
-            // fetch signature ID from the  bitmap
-            // use __CLZ(uint32_t) on the M4?
-            sig=1;
 
+#ifdef PIXY
+            sig = 32-__CLZ(sigBitMap);
+#else
+            // fetch signature ID from the  bitmap
+            sig=1;
             while( (sigBitMap&1)==0 ){
                 sigBitMap>>=1;
                 ++sig;
             }
-
+#endif
             u = qval.m_u;
             v = qval.m_v;
 
@@ -252,14 +287,14 @@ int Blobs::runlengthAnalysis()
                            c>=(int32_t)m_clut.m_miny;
         }
 #ifdef PIXY
-        uint32_t tm=getTimer(timer);
+        /*uint32_t tm=getTimer(timer);
         tmSum+=tm;
         if(tm>tmMax)tmMax=tm;
         const uint32_t nLoop=500000;
         if(++tmCnt==nLoop){
             DBG("RLA exp=%d avg=%.1fus max=%dus",m_clut.m_useExpSigs, float(tmSum)/nLoop, tmMax);
             tmCnt=tmSum=tmMax=0;
-        }
+        }*/
 #endif
 
 
@@ -298,6 +333,7 @@ int Blobs::runlengthAnalysis()
             segmentSig = 0;
         }
     }
+
 	endFrame();
 
 #ifndef PIXY

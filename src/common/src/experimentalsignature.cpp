@@ -44,7 +44,6 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // check: It looks like that the YUV (u,v)-distribution is nothing else than a projection of the rgb cube alongside the saturation=0 body diagonal.
     // Haven't found a confirmation of this yet. ... Use M4 CMSIS-DSP matrix/vector features for doing this?
     // this is more or less a duplicate of RuntimeSignature::calculateUV
-    // clean this up, ... maybe at least some inline functions
 
     // calc rgb min and max
     float hsvVal = g; // aka rgbMax
@@ -53,38 +52,26 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     if(b>hsvVal)hsvVal=b;
     if(b<rgbMin)rgbMin=b;
 
-    // might happen, floating point or g1/g2 bayer mess caused
-//    if(hsvVal>1.0f){
-//        hsvVal=1.0f;
-//        //EXPLOG("val ouch");
-//    }
-
     // bail out early if not within hsv value limits
     // and handling of black pixels (division by zero prevention)
+    // The additional cut "hsvVal<=1.0f" handles hsv values above 1.0
+    // This might happen due to floating point inaccuracies or the g1/g2 bayer mess.
     if( hsvVal<m_hsvValMin+bite || (hsvVal>m_hsvValMax && hsvVal<=1.0f) ){
         u=v=0.0f;
         return hsvVal+m_hsvValMin+m_hsvSatMin < bite;  // return true if signature accepts black
     }
 
-    //float hsvValInv=1.0f/hsvVal;                     // save a division
-    //float hsvSat = float(hsvVal-rgbMin) * hsvValInv; // save a division
-    float hsvSat = float(hsvVal-rgbMin);               // save a division
-
-    // might happen (?), floating point or g1/g2 bayer mess caused ... handled in the condition below
-//    if(hsvSat>1.0f){
-//        hsvSat=1.0f;
-//        //EXPLOG("sat ouch");
-//    }
+    float hsvSat = hsvVal-rgbMin;  // ... not really as sat=(val-min)/val but I wanted to defer the division after the next bail out check
 
     // bail out early if not within hsv saturation limits
     // and handling of grey pixels (division by zero prevention)
-    //if( hsvSat<m_hsvSatMin+bite || (hsvSat>m_hsvSatMax && hsvSat<=1.0f) ) {
     if( hsvSat<m_hsvSatMin*hsvVal+bite || hsvSat>m_hsvSatMax*hsvVal) {
         u=v=0;
         return hsvSat+m_hsvSatMin<bite ; // return true if signature accepts 255 shades of grey ... :D
     }
 
-    float hsvValInv=1.0f/hsvVal;    // save a division
+    float hsvValInv=1.0f/hsvVal;
+    hsvSat *= hsvValInv;     // now its really a saturation value
 
     // calc classic YUV luminance y
     float y = yuv_wr*r + yuv_wg*g + yuv_wb*b;
@@ -100,7 +87,11 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // u-v coordinates are independent of the HSV value
     // now make the hexagon a circle
     // we would need the sqrt anyway, but it adds another division
-    float circleFac = hsvSat / sqrtf(u*u+v*v);  // evillive check if M4 FPU is used
+#ifdef PIXY
+    float circleFac = hsvSat / vsqrtf(u*u+v*v);  // evillive check if M4 FPU is used ... now it is!
+#else
+    float circleFac = hsvSat / sqrtf(u*u+v*v);
+#endif
     u *= circleFac;
     v *= circleFac;
 
@@ -110,14 +101,11 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     if(m_hsvSatMed<bite)return true;
 
     // calculate cosine delta hue using dot product: (u,v)_sig . (u,v)_pix / |(u,v)_sig| / |(u,v)_pix|
-    float cosHue = u*uMed() + v*vMed();
-    //cosHue /= hsvSat * m_hsvSatMed; // save one division
-
-    //if(cosHue>0.99) EXPLOG("u=%.2f v=%.2f um=%.2f vm=%.2f c=%.24f ", u,v,m_uMed ,m_vMed,cosHue);
+    float cosHue = u*uMed() + v*vMed(); // missing the division? Made it a multiplication in the last check below
 
     // Are we within HSV hue limits?
     // return cosHue>m_hsvCosDeltaHueMin; // save one division
-    return cosHue > m_hsvCosDeltaHueMin * hsvSat * m_hsvSatMed; // safe one division
+    return cosHue > m_hsvCosDeltaHueMin * hsvSat * m_hsvSatMed;
 }
 
 
@@ -176,8 +164,8 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     m_hsvSatMin = satHist.X( outLim)-outLim;
     if(m_hsvSatMin<0.0f) m_hsvSatMin=0.0f;
     //m_hsvSatMax = satHist.X( 1.0f-outLim);
-    m_hsvSatMax = 1;
-    m_hsvHueRange = 0.5f * ( hueHist.X(1.0f-outLim) - hueHist.X(outLim) );
+    m_hsvSatMax = 1.0f;
+    m_hsvHueRange = ( hueHist.X(1.0f-outLim) - hueHist.X(outLim) ) * 0.5f/(1.0f-outLim);
     m_hsvCosDeltaHueMin = cosf( m_hsvHueRange );
 
     // now have a closer look at the hue and sat distributions
@@ -255,7 +243,11 @@ void ExperimentalSignature::translateRGB(float r, float g, float b, float &u, fl
 
     // now we have a (u,v) vector pointing into a nice YUV hexagon in the u-v plane
     // now make the hexagon a circle
-    float circleFac = hsvSat / sqrtf(u*u+v*v);  // evillive check if M4 FPU is used
+#ifdef PIXY
+    float circleFac = hsvSat / vsqrtf(u*u+v*v);  // evillive check if M4 FPU is used ... now it is!
+#else
+    float circleFac = hsvSat / sqrtf(u*u+v*v);
+#endif
     u *= circleFac;
     v *= circleFac;
 }
@@ -318,7 +310,12 @@ void ExperimentalSignature::setHsvSatMax(float hsvSatMax)
 void ExperimentalSignature::setPosUV(const ExpSigPos &posUV)
 {
     m_posUV = posUV;
+#ifdef PIXY
+    m_hsvSatMed = vsqrtf(uMed()*uMed()+vMed()*vMed());
+#else
     m_hsvSatMed = sqrtf(uMed()*uMed()+vMed()*vMed());
+#endif
+
 }
 
 

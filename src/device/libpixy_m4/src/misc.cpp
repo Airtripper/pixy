@@ -15,9 +15,22 @@
 
 #include "misc.h"
 #include "lpc43xx_adc.h"
-#include "pixy_init.h"
+//#include "pixy_init.h"
 #include "debug.h"
 #include "led.h"
+
+/*
+// Instead of the M4 FPU's 14 cycle VSQRT function, gcc uses a lib function that's ~10 times slower
+// Guess it's caused by LPCXpresso mandatory "-mfloat-abi=softfp" restriction for multi core projects,
+// which is claimed to be fixed with LPCXpresso 7.7.2
+// ... found this nice hack for this issue:
+float vsqrtf(float op1) {
+ if(op1 <= 0.f) return 0.f;
+ float result;
+ __ASM volatile ("vsqrt.f32 %0, %1" : "=w" (result) : "w" (op1) );
+ return (result);
+}
+*/
 
 // can be called before timer is set up
 void delayus(uint32_t us)
@@ -74,6 +87,7 @@ uint32_t adc_get(uint32_t channel)
 	return res;
 }
 
+/*
 void setTimer(uint32_t *timer)
 {
 	*timer = LPC_TIMER2->TC;
@@ -86,7 +100,7 @@ uint32_t getTimer(uint32_t timer)
 
 	return result;
 }
-
+*/
 void showError(uint8_t num, uint32_t color, const char *message)
 {
 	int i;
