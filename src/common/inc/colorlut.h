@@ -25,7 +25,7 @@
 
 #define CL_NUM_SIGNATURES               7
 #define CL_LUT_COMPONENT_SCALE          6
-#define CL_LUT_SIZE                     (1<<(CL_LUT_COMPONENT_SCALE*2))
+#define CL_LUT_SIZE                     ((1<<(CL_LUT_COMPONENT_SCALE*2))+0x200)  // duplicated in exec_m0.c (LUT_MEMORY_SIZE)!
 #define CL_LUT_ENTRY_SCALE              15
 #define CL_GROW_INC                     4
 #define CL_MIN_Y_F                      0.05 // for when generating signatures, etc

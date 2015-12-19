@@ -515,6 +515,11 @@ int ColorLUT::generateLUT()
                             if(y<m_expYMin) m_expYMin=y;
                             if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
                             m_lut[lutIdx] |= 1<<(bestSigId-1);
+
+                            uint16_t* yLut = (uint16_t*)(m_lut+0x1000);
+                            uint32_t yLutIdx = 2*m_lut[lutIdx];
+                            if(y<yLut[yLutIdx]) yLut[yLutIdx]=y;
+                            if(y>yLut[yLutIdx+1]) yLut[yLutIdx+1]=y;
                         }
                     }
                 }
@@ -580,7 +585,7 @@ int ColorLUT::generateLUT()
 #ifndef PIXY
     EXPLOG("LUT Dump (collisions=%d, yMin=%d)", collisions, m_expYMin);
     const int sz = (1<<CL_LUT_COMPONENT_SCALE);
-    const int strLen = sz*2+1;
+    const int strLen = sz*4+1;
     char str[strLen];
     for(int v=sz-1; v>=0; --v){
         unsigned int pos=0;
@@ -620,6 +625,14 @@ void ColorLUT::clearLUT(uint8_t signum)
             m_lut[i] = 0;
         else
             m_lut[i] &= ~(1<<(signum-1));
+    }
+
+    // dirty !
+    // reset the yLUT
+    uint16_t* yLut = (uint16_t*)(m_lut+0x1000);
+    for(uint32_t i=0; i<128; ++i){
+        yLut[2*i]= m_useExpSigs ? 0xffff : 0;
+        yLut[2*i+1]= m_useExpSigs ? 0 : 0xffff;
     }
 }
 

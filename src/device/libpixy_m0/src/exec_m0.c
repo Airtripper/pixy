@@ -52,13 +52,13 @@ int32_t exec_run(uint8_t *prog)
 	return 0;
 }
 
-#define LUT_MEMORY_SIZE		0x1000 // bytes
+#define LUT_MEMORY_SIZE		0x1200 // bytes  duplicated in colorLUT.h (CL_LUT_SIZE)!
 
 void setup0()
 {
 }
 
-uint32_t g_m0mem = SRAM1_LOC + SRAM1_SIZE - LUT_MEMORY_SIZE - 0x1000;  // 4K should be enough for scratch mem (320/3+2)*8 + 320*8 = 3424
+uint32_t g_m0mem = SRAM1_LOC + SRAM1_SIZE - LUT_MEMORY_SIZE - 0xE00;  // duplicated in concomp.cpp! 4K should be enough for scratch mem (320/3+2)*8 + 320*8 = 3424  ... hgs looks like that it's happy with even less: 3584
 uint32_t g_lut = SRAM1_LOC + SRAM1_SIZE - LUT_MEMORY_SIZE;
 
 void loop0()

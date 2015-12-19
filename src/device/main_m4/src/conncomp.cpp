@@ -620,7 +620,7 @@ int32_t cc_getRLSFrameChirpFlags(Chirp *chirp, uint8_t renderFlags)
 
 
 	lut = (uint8_t *)SRAM1_LOC + SRAM1_SIZE - CL_LUT_SIZE;
-	scratchMem = (uint8_t *)SRAM1_LOC + SRAM1_SIZE - CL_LUT_SIZE - 0x1000;  // 4K should be enough for scratch mem (320/3+2)*8 + 320*8 = 3424
+	scratchMem = (uint8_t *)SRAM1_LOC + SRAM1_SIZE - CL_LUT_SIZE - 0xE00;  // duplicated in exec_m0.c! 4K should be enough for scratch mem (320/3+2)*8 + 320*8 = 3424  ... hgs: looks like that it's happy with even less: 3584
 	mem = (uint8_t *)SRAM1_LOC;
 	memSize = (uint32_t)scratchMem-SRAM1_LOC;
 
