@@ -443,7 +443,7 @@ int ColorLUT::generateLUT()
     uint32_t timer;
     setTimer(&timer);
 
-    const uint32_t keepAliveTmOut = 250000;
+    const uint32_t keepAliveTmOut = 50000;
     uint32_t keepAliveTmr;
     setTimer(&timer);
 #endif
@@ -462,28 +462,54 @@ int ColorLUT::generateLUT()
 */
 
         // loop with sufficient granularity thru rgb space
-        const uint16_t stepSz = 3; // 255%3=0 !
+        const uint16_t stepSz = 5; // 255%5=0 !
+//        for( uint16_t r=0; r<=255; r+=stepSz){
+//            float rf = r * rgbNorm;
+//            for( uint16_t g=0; g<=255; g+=stepSz){
+//                float gf = g * rgbNorm;
+//                for( uint16_t b=0; b<=255; b+=stepSz){
+//                    float bf = b * rgbNorm;
+        const int16_t bm=(1<<8)-1;
+        //uint32_t cnt=0;
+        for( int16_t u=-bm; u<=bm; u+=stepSz){
+            for( int16_t v=-bm; v<=bm; v+=stepSz){
 
-        for( uint16_t r=0; r<=255; r+=stepSz){
-            for( uint16_t g=0; g<=255; g+=stepSz){
-                for( uint16_t b=0; b<=255; b+=stepSz){
+                int16_t gMin=0;
+                if(gMin<-u)gMin=-u;
+                if(gMin<-v)gMin=-v;
+                int16_t gMax=bm;
+                if(gMax>bm-u)gMax=bm-u;
+                if(gMax>bm-v)gMax=bm-v;
+                //EXPLOG("%i %i => %i %i",u,v,gMin,gMax);
 
+                int16_t ui = u >> (9-CL_LUT_COMPONENT_SCALE);
+                ui &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+                int16_t vi = v >> (9-CL_LUT_COMPONENT_SCALE);
+                vi &= (1<<CL_LUT_COMPONENT_SCALE)-1;
+                int16_t lutIdx = (ui<<CL_LUT_COMPONENT_SCALE)+ vi;
+
+                for( uint16_t g=gMin; g<=gMax; g+=stepSz){
 #ifdef PIXY
                     if(getTimer(keepAliveTmr)>keepAliveTmOut){
                          g_chirpUsb->service(); // keep alive
                          setTimer(&keepAliveTmr);
                     }
 #endif
+                    //if(++cnt>1000000)break;
+                    //if(u+g<0 || u+g>bm || v+g<0 || v+g>bm ) EXPLOG("%i %i => %i %i %i", u,v,g,u+g,v+g);
                     // determine the most probable signature by comparing distances in the u/v plane
+                    float gf=g*rgbNorm;
+                    float rf=(u+g)*rgbNorm;
+                    float bf=(v+g)*rgbNorm;
                     float dst2Min = 23.0;
                     uint8_t bestSigId = 0;
                     for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
                         // check signature compatibility and calc the distance in the (u,v) plane
-                        float u,v;
+                        float uf,vf;
                         const ExperimentalSignature& sig = expSig(s);
-                        if( sig.isActive() && sig.isRgbAccepted(r,g,b, u,v)){
-                            float du = u-sig.uMed();
-                            float dv = v-sig.vMed();
+                        if( sig.isActive() && !(m_lut[lutIdx] & (1<<(s-1))) && sig.isRgbAccepted(rf,gf,bf, uf,vf)){
+                            float du = uf-sig.uMed();
+                            float dv = vf-sig.vMed();
                             float dst2 = du*du+dv*dv;
                             if(dst2<dst2Min){
                                 dst2Min=dst2;
@@ -496,25 +522,28 @@ int ColorLUT::generateLUT()
 #ifndef PIXY
                         if( m_useExpLut ){
                             int16_t ui,vi;
-                            ColorLutCalculatorExp::calcUV( r,g,b, ui,vi);
+                            ColorLutCalculatorExp::calcUV( u+g,g,v+g, ui,vi);
                             // ... and store a 7bit bitmap of compatible signatures in there
                             // Usually not more than one bit should should be set,
                             // but nearby signatures might overlap due to the non perfect
                             // division approximation used in the M0 preselection (u,v) caculation.
                             // Those collisions are re-checked in the final filter step performed on the M4
-                            int32_t lutIdx = (vi<<CL_LUT_COMPONENT_SCALE) | ui; // alternative LUT arrangement that can be visualized, see ColorLutCalculatorExp::calcUV
+                            uint16_t lutIdx = (vi<<CL_LUT_COMPONENT_SCALE) | ui; // alternative LUT arrangement that can be visualized, see ColorLutCalculatorExp::calcUV
                             if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
                             m_lut[lutIdx] |= 1<<(bestSigId-1);
                         }else
 #endif
                         {
+
+
+                          /*
                             int32_t u = r-g;
                             u >>= 9-CL_LUT_COMPONENT_SCALE;
                             u &= (1<<CL_LUT_COMPONENT_SCALE)-1;
                             int32_t v = b-g;
                             v >>= 9-CL_LUT_COMPONENT_SCALE;
                             v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-                            int32_t lutIdx = (u<<CL_LUT_COMPONENT_SCALE)+ v;
+                            int32_t lutIdx = (u<<CL_LUT_COMPONENT_SCALE)+ v;*/
 
                             if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
                             m_lut[lutIdx] |= 1<<(bestSigId-1);
@@ -523,6 +552,7 @@ int ColorLUT::generateLUT()
                 }
             }
         }
+        //EXPLOG("CNT=%d",cnt);
     }
     else
     {

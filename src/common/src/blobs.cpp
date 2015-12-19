@@ -145,6 +145,21 @@ int Blobs::runlengthAnalysis()
 #ifndef PIXY
     m_numQvals = 0;
 #endif
+
+    /*float gValMin=23.f;
+    float gValMax=0.f;
+    float gSatMin=23.f;
+    float gSatMax=0.f;
+    if(m_clut.m_useExpSigs){
+        for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
+            const ExperimentalSignature& es = m_clut.expSig(s);
+            if(es.isActive() && es.hsvValMin()<gValMin) gValMin=es.hsvValMin();
+            if(es.isActive() && es.hsvValMax()>gValMax) gValMax=es.hsvValMax();
+            if(es.isActive() && es.hsvSatMin()<gSatMin) gSatMin=es.hsvSatMin();
+            if(es.isActive() && es.hsvSatMax()>gSatMax) gSatMax=es.hsvSatMax();
+        }
+    }*/
+
     while(1)
     {
         while (m_qq->dequeue(&qval)==0);

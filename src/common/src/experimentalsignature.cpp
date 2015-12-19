@@ -166,6 +166,8 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     //m_hsvSatMax = satHist.X( 1.0f-outLim);
     m_hsvSatMax = 1.0f;
     m_hsvHueRange = ( hueHist.X(1.0f-outLim) - hueHist.X(outLim) ) * 0.5f/(1.0f-outLim);
+    const float dMin = 2.0f*d2r;
+    if(m_hsvHueRange<dMin)m_hsvHueRange=dMin;
     m_hsvCosDeltaHueMin = cosf( m_hsvHueRange );
 
     // now have a closer look at the hue and sat distributions
@@ -280,7 +282,7 @@ void ExperimentalSignature::setIsActive(bool isActive)
 
 float ExperimentalSignature::hsvHueRange() const
 {
-    return m_hsvHueRange;
+    return m_hsvHueRange*r2d;
 }
 
 void ExperimentalSignature::setHsvHueRange(float hsvHueRange)
