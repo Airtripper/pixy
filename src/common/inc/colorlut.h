@@ -125,6 +125,7 @@ public:
     RuntimeSignature m_runtimeSigs[CL_NUM_SIGNATURES];
 
     uint32_t m_miny;
+    uint16_t m_expYMin; // lowest accepted y=r+g+b in LUT generation, used in Blobs::runlengthAnalysis to speed things up
 
     /// non const access to experimental signature of given ID [1-7]
     inline ExperimentalSignature& accExpSig(uint8_t idx) {return m_expSigs[(idx-1)&0x7];}

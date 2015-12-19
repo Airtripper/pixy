@@ -146,20 +146,6 @@ int Blobs::runlengthAnalysis()
     m_numQvals = 0;
 #endif
 
-    /*float gValMin=23.f;
-    float gValMax=0.f;
-    float gSatMin=23.f;
-    float gSatMax=0.f;
-    if(m_clut.m_useExpSigs){
-        for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
-            const ExperimentalSignature& es = m_clut.expSig(s);
-            if(es.isActive() && es.hsvValMin()<gValMin) gValMin=es.hsvValMin();
-            if(es.isActive() && es.hsvValMax()>gValMax) gValMax=es.hsvValMax();
-            if(es.isActive() && es.hsvSatMin()<gSatMin) gSatMin=es.hsvSatMin();
-            if(es.isActive() && es.hsvSatMax()>gSatMax) gSatMax=es.hsvSatMax();
-        }
-    }*/
-
     while(1)
     {
         while (m_qq->dequeue(&qval)==0);
@@ -180,7 +166,7 @@ int Blobs::runlengthAnalysis()
 #ifndef PIXY
             m_qvals[m_numQvals++] = 0;
 #else
-            if (icount++>5) // an interleave of every 5 lines or about every 175us seems good ... (5*175)us ?
+            if (icount++==5) // an interleave of every 5 lines or about every 175us seems good ... (5*175)us ?
 			{
                 /*{
                     uint32_t tm=getTimer(timer3);
@@ -224,54 +210,55 @@ int Blobs::runlengthAnalysis()
         // decode the M0 preselected signature id bitmap
         uint32_t sigBitMap = qval.m_col & ((1<<CL_NUM_SIGNATURES)-1);
 
-        if(m_clut.m_useExpSigs)
-        {
-            // decode r, g and b from the 2-pixel sum of
-            // u=r-g, v=b-g and y=r+g+b
-            // => g=(y-u-v)/3, r=u+g and b=v+g
-            // as each qval accumulates two pixels we have to divide the final rgb values by 2
-            float g = qval.m_y - qval.m_u - qval.m_v;
-            g*=(1.0f/3.0f);
-            float r = float(qval.m_u) + g;
-            r*=rgbNorm*0.5f;
-            float b = float(qval.m_v) + g;
-            b*=rgbNorm*0.5f;
-            g*=rgbNorm*0.5f;
+        if(m_clut.m_useExpSigs){
+            if(qval.m_y>m_clut.m_expYMin){ // would be cool to have this simple cut done already on the M0
+                // decode r, g and b from the 2-pixel sum of
+                // u=r-g, v=b-g and y=r+g+b
+                // => g=(y-u-v)/3, r=u+g and b=v+g
+                // as each qval accumulates two pixels we have to divide the final rgb values by 2
+                float g = qval.m_y - qval.m_u - qval.m_v;
+                g*=(1.0f/3.0f);
+                float r = float(qval.m_u) + g;
+                r*=rgbNorm*0.5f;
+                float b = float(qval.m_v) + g;
+                b*=rgbNorm*0.5f;
+                g*=rgbNorm*0.5f;
 
-            // determine the most probable signature by comparing distances in the (u,v) plane
-            float dst2Min = 23.0f;
-            uint8_t bestSigId = 0;
-            uint8_t sigId = 0;
-            while(sigBitMap){
+                // determine the most probable signature by comparing distances in the (u,v) plane
+                float dst2Min = 23.0f;
+                uint8_t bestSigId = 0;
+                uint8_t sigId = 0;
+                while(sigBitMap){
 #ifdef PIXY
-                uint32_t leadZeros = __CLZ(sigBitMap);
-                sigBitMap &= ~(0x80000000>>leadZeros);
-                sigId = 32-leadZeros;
+                    uint32_t leadZeros = __CLZ(sigBitMap);
+                    sigBitMap &= ~(0x80000000>>leadZeros);
+                    sigId = 32-leadZeros;
 #else
-                // fetch next signature ID from the  bitmap
-                while( (sigBitMap&1)==0 ){
+                    // fetch next signature ID from the  bitmap
+                    while( (sigBitMap&1)==0 ){
+                        sigBitMap>>=1;
+                        ++sigId;
+                    }
                     sigBitMap>>=1;
                     ++sigId;
-                }
-                sigBitMap>>=1;
-                ++sigId;
 #endif
-                // check signature compatibility and calc the distance in the (u,v) plane
-                float u,v;
-                const ExperimentalSignature& es = m_clut.expSig(sigId);
-                if( es.isActive() && es.isRgbAccepted(r,g,b, u,v)){
-                    float du = u-es.uMed();
-                    float dv = v-es.vMed();
-                    float dst2 = du*du + dv*dv;
-                    if(dst2<dst2Min){
-                        dst2Min=dst2;
-                        bestSigId=sigId;
+                    // check signature compatibility and calc the distance in the (u,v) plane
+                    float u,v;
+                    const ExperimentalSignature& es = m_clut.expSig(sigId);
+                    if( es.isActive() && es.isRgbAccepted(r,g,b, u,v)){
+                        float du = u-es.uMed();
+                        float dv = v-es.vMed();
+                        float dst2 = du*du + dv*dv;
+                        if(dst2<dst2Min){
+                            dst2Min=dst2;
+                            bestSigId=sigId;
+                        }
                     }
                 }
+                // set signature id
+                sig = bestSigId;
+                qvalAccepted = (sig!=0);
             }
-            // set signature id
-            sig = bestSigId;
-            qvalAccepted = (sig!=0);
         }
         else
         {

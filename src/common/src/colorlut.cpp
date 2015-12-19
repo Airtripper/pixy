@@ -416,28 +416,6 @@ int ColorLUT::setSignature(uint8_t signum, const ColorSignature &sig)
 
 int ColorLUT::generateLUT()
 {
-/*    #ifdef
-    {
-        float sumF = 0.0f;
-        const uint32_t nLoop = 100000;
-        uint32_t tm;
-
-        setTimer(&tm);
-        for(uint32_t i=1; i<=nLoop; ++i )sumF+=1.0f/float(i);
-        DBG("div %d %f", getTimer(tm), sumF);
-
-        sumF=0.0f;
-        setTimer(&tm);
-        for(uint32_t i=1; i<=nLoop; ++i )sumF+=sqrtf(float(i));
-        DBG("sqrtf %d %f", getTimer(tm), sumF);
-
-        sumF=0.0f;
-        setTimer(&tm);
-        for(uint32_t i=1; i<=nLoop; ++i )sumF+=vsqrtf(float(i));
-        DBG("vsqrtf %d %f", getTimer(tm), sumF);
-    }
-    #endif*/
-
 
 #ifdef PIXY
     uint32_t timer;
@@ -454,33 +432,29 @@ int ColorLUT::generateLUT()
 
     if(m_useExpSigs){
 
-/*
-        // check which signatures are active and set the experimental ones accordingly
-        // evillive ... kind of ugly doing this here
-        for (int16_t s=0; s<CL_NUM_SIGNATURES; ++s)
-            if(m_expSigs[s].isActive()) m_expSigs[s].setIsActive( m_signatures[s].m_uMin!=0 || m_signatures[s].m_uMax!=0);
-*/
+        float gValMinF=23.f;
+        for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
+            const ExperimentalSignature& es = expSig(s);
+            if(es.isActive() && es.hsvValMin()<gValMinF) gValMinF=es.hsvValMin();
+        }
+        int16_t gValMin = (gValMinF*255.f)+0.5f;
 
-        // loop with sufficient granularity thru rgb space
-        const uint16_t stepSz = 5; // 255%5=0 !
-//        for( uint16_t r=0; r<=255; r+=stepSz){
-//            float rf = r * rgbNorm;
-//            for( uint16_t g=0; g<=255; g+=stepSz){
-//                float gf = g * rgbNorm;
-//                for( uint16_t b=0; b<=255; b+=stepSz){
-//                    float bf = b * rgbNorm;
+        m_expYMin=4223;
+
+        // loop with sufficient granularity thru uv space
+        const int16_t stepSz = 5; // 255%5=0 !
         const int16_t bm=(1<<8)-1;
-        //uint32_t cnt=0;
         for( int16_t u=-bm; u<=bm; u+=stepSz){
             for( int16_t v=-bm; v<=bm; v+=stepSz){
 
+                // prepare limits for the inner loop thru g values
+                // 0 <= {r=u+g,b=v+g,g} <=255
                 int16_t gMin=0;
                 if(gMin<-u)gMin=-u;
                 if(gMin<-v)gMin=-v;
                 int16_t gMax=bm;
                 if(gMax>bm-u)gMax=bm-u;
                 if(gMax>bm-v)gMax=bm-v;
-                //EXPLOG("%i %i => %i %i",u,v,gMin,gMax);
 
                 int16_t ui = u >> (9-CL_LUT_COMPONENT_SCALE);
                 ui &= (1<<CL_LUT_COMPONENT_SCALE)-1;
@@ -495,8 +469,11 @@ int ColorLUT::generateLUT()
                          setTimer(&keepAliveTmr);
                     }
 #endif
-                    //if(++cnt>1000000)break;
-                    //if(u+g<0 || u+g>bm || v+g<0 || v+g>bm ) EXPLOG("%i %i => %i %i %i", u,v,g,u+g,v+g);
+
+                    // bail out early on dark colours
+                    // (y=r+g+b=u+v+3g) >= (val=max(r,g,b))
+                    if(u+v+3*g<gValMin)continue;
+
                     // determine the most probable signature by comparing distances in the u/v plane
                     float gf=g*rgbNorm;
                     float rf=(u+g)*rgbNorm;
@@ -534,17 +511,8 @@ int ColorLUT::generateLUT()
                         }else
 #endif
                         {
-
-
-                          /*
-                            int32_t u = r-g;
-                            u >>= 9-CL_LUT_COMPONENT_SCALE;
-                            u &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-                            int32_t v = b-g;
-                            v >>= 9-CL_LUT_COMPONENT_SCALE;
-                            v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
-                            int32_t lutIdx = (u<<CL_LUT_COMPONENT_SCALE)+ v;*/
-
+                            uint32_t y = 2*(u+v+3*g);
+                            if(y<m_expYMin) m_expYMin=y;
                             if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
                             m_lut[lutIdx] |= 1<<(bestSigId-1);
                         }
@@ -552,7 +520,6 @@ int ColorLUT::generateLUT()
                 }
             }
         }
-        //EXPLOG("CNT=%d",cnt);
     }
     else
     {
@@ -611,7 +578,7 @@ int ColorLUT::generateLUT()
     }
 
 #ifndef PIXY
-    EXPLOG("LUT Dump (collisions=%d)", collisions);
+    EXPLOG("LUT Dump (collisions=%d, yMin=%d)", collisions, m_expYMin);
     const int sz = (1<<CL_LUT_COMPONENT_SCALE);
     const int strLen = sz*2+1;
     char str[strLen];
