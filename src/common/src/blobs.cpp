@@ -211,7 +211,7 @@ int Blobs::runlengthAnalysis()
         uint32_t sigBitMap = qval.m_col & ((1<<CL_NUM_SIGNATURES)-1);
 
         if(m_clut.m_useExpSigs){
-            if(qval.m_y>m_clut.m_expYMin){ // would be cool to have this simple cut done already on the M0
+            //if(qval.m_y>m_clut.m_expYMin){ // would be cool to have this simple cut done already on the M0
                 // decode r, g and b from the 2-pixel sum of
                 // u=r-g, v=b-g and y=r+g+b
                 // => g=(y-u-v)/3, r=u+g and b=v+g
@@ -258,7 +258,7 @@ int Blobs::runlengthAnalysis()
                 // set signature id
                 sig = bestSigId;
                 qvalAccepted = (sig!=0);
-            }
+            //}
         }
         else
         {

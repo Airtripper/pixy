@@ -484,7 +484,8 @@ int ColorLUT::generateLUT()
                         // check signature compatibility and calc the distance in the (u,v) plane
                         float uf,vf;
                         const ExperimentalSignature& sig = expSig(s);
-                        if( sig.isActive() && !(m_lut[lutIdx] & (1<<(s-1))) && sig.isRgbAccepted(rf,gf,bf, uf,vf)){
+                        //if( sig.isActive() && !(m_lut[lutIdx] & (1<<(s-1))) && sig.isRgbAccepted(rf,gf,bf, uf,vf)){
+                        if( sig.isActive() && sig.isRgbAccepted(rf,gf,bf, uf,vf)){
                             float du = uf-sig.uMed();
                             float dv = vf-sig.vMed();
                             float dst2 = du*du+dv*dv;
@@ -605,6 +606,8 @@ int ColorLUT::generateLUT()
         }
         EXPLOG(str);
     }
+    uint16_t* yLut = (uint16_t*)(m_lut+0x1000);
+    for(uint32_t i=0; i<128; ++i) EXPLOG("sig=%3u %3d < y < %3d", i, yLut[2*i], yLut[2*i+1] );
 #endif
 
 #ifdef PIXY

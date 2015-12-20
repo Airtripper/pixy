@@ -272,7 +272,9 @@ _ASM_LABEL(beg1)
 
 	_ASM(ADDS 	r4, #12)  		// inc col, skipped pixel
 
-								//    create yLUT index
+								// -2   create yLUT index
+	_ASM(MOV	r10, r5)		// -1 save green pixel read above
+	_ASM(MOV	r5, r12)		// 0  get back current qMem pointer
 	_ASM(LDRB	r7, [r5])	 	// 2  get back the 7 sig bitmap
 	_ASM(LSLS	r7, #25)		// 3  get rid of the garbage bit 8
 	_ASM(LSRS	r7, #23)		// 4  shift remaining bitmap back an multiply with 4
@@ -280,52 +282,50 @@ _ASM_LABEL(beg1)
 	_ASM(LSLS	r1, #12)		// 6
 	_ASM(ADD	r7, r1)			// 7  add it to the yLUT index
 	_ASM(ADD	r7, r2)			// 8  and add the yLUT address
-	_ASM(LDRH	r6, [r7])		// 10 load yMin
+	_ASM(LDRH	r6, [r7])		// 10  load yMin
 	_ASM(LDRH	r1, [r5,#6])	// 12 load ySum
-	_ASM(CMP	r1, r6)			// 13 compare them
-	_ASM(BLO	nop1)			// 14 (->16) bail out if ySum<yMin
-	_ASM(LDRH	r6, [r7,#2])	// 16 load yMax
-	_ASM(CMP	r1, r6)			// 17 compare them
-	_ASM(BHI	nop2)			// 18 (->20) bail out if ySum>yMax
+	_ASM(MOV	r5, r10)		// 13 recover green Pixel
+	_ASM(CMP	r1, r6)			// 14 compare them
+	_ASM(BLO	nop1)			// 15 (->17) bail out if ySum<yMin
+	_ASM(LDRH	r6, [r7,#2])	// 17 load yMax
+	_ASM(CMP	r1, r6)			// 18 compare them
+	_ASM(BHI	nop2)			// 19 (->21) bail out if ySum>yMax
 
-	_ASM(MOVS	r1, #8)			//
-	_ASM(ADD	r12, r1)		// inc qmem
+	_ASM(MOVS	r1, #8)			// 20
+	_ASM(ADD	r12, r1)		// 21 inc qmem
 
-	_ASM(B		nop3)			// (->23)
+	_ASM(B		nop3)			// (->24)
 
-	_ASM(NOP)
-	_ASM(NOP)// 2
+	//_ASM(NOP)
+	//_ASM(NOP)// 2
 #if 1
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)// 7
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)// 7
 
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)
-	_ASM(NOP)//14
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)
+	//_ASM(NOP)//17
 	_ASM_LABEL(nop1)
 	_ASM(NOP)
-
-	_ASM(NOP)//16
+	_ASM(NOP)
 
 	_ASM(NOP)
-	_ASM(NOP)//18
+	_ASM(NOP)//21
 	_ASM_LABEL(nop2)
 	_ASM(NOP)
-	_ASM(NOP)//20
-
 	_ASM(NOP)
+	_ASM(NOP)//24
 	_ASM_LABEL(nop3)
-	_ASM(NOP)
-	_ASM(NOP)//23
-
-	_ASM(NOP)
 	_ASM(NOP)
 	_ASM(ADDS 	r4, #8)  // inc col, skipped pixel
 #endif
