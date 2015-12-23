@@ -394,25 +394,31 @@ void saveNactivateExpSig(uint8_t idx){
 
 	snprintf(id, len, parName_eSigAct, idx);
 	prm_set(id, UINT8(1), END);
+	prm_resetShadow(id);
 
 	snprintf(id, len, parName_eSigHueRng, idx);
 	prm_set(id, FLT32(eSig.hsvHueRange()), END);
+	prm_resetShadow(id);
 
 	snprintf(id, len, parName_eSigSatMin, idx);
 	prm_set(id, FLT32(eSig.hsvSatMin()), END);
+	prm_resetShadow(id);
 
 	snprintf(id, len, parName_eSigSatMax, idx);
 	prm_set(id, FLT32(eSig.hsvSatMax()), END);
+	prm_resetShadow(id);
 
 	snprintf(id, len, parName_eSigValMin, idx);
 	prm_set(id, FLT32(eSig.hsvValMin()), END);
+	prm_resetShadow(id);
 
 	snprintf(id, len, parName_eSigValMax, idx);
 	prm_set(id, FLT32(eSig.hsvValMax()), END);
+	prm_resetShadow(id);
 
 	// maybe there's a less brute force way to update the corresponding sliders in pixyMon's config dialog
 	// but I don't have any clue how to use that documentation free "dirty", "shadow", "chirp" ... parameter-stuff.
-	prm_resetShadows();
+	//prm_resetShadows();
 }
 
 

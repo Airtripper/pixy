@@ -156,6 +156,15 @@ Shadow *prm_findShadow(const char *id)
 	return NULL;
 }
 
+void prm_resetShadow(const char *id){
+	Shadow* shd = prm_findShadow(id);
+	if(shd && shd->data){
+		free( shd->data);
+		shd->data = NULL;
+		shd->len = 0;
+		g_dirty = true;
+	}
+}
 
 int32_t prm_resetShadows()
 {

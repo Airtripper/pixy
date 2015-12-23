@@ -34,6 +34,14 @@ extern const char* parName_eSigSatMax;
 extern const char* parName_eSigValMin;
 extern const char* parName_eSigValMax;
 
+#ifdef PIXY
+#define SQRTF vsqrtf
+#else
+#define SQRTF sqrtf
+#endif
+
+
+
 // The color signatures median (u,v) position in the chroma plane
 // Used in ExperimentalSignature class below.
 // Separated for storage as hidden parameter.
@@ -100,7 +108,7 @@ public:
     void setIsActive(bool isActive);
 
     float hsvHueRange() const;
-    void setHsvHueRange(float hsvHueRange);
+    void setHsvHueRange(float hsvHueRange, bool omitRangeBoost=false);
 
     float hsvSatMin() const;
     void setHsvSatMin(float hsvSatMin);
@@ -147,6 +155,10 @@ public:
 
     // float binVal(uint_16 b)const{ return m_min+(b+0.5f)*m_binWidth;}
     // uint16_t binCnt(uint16_t b)const{ return m_bins[b];}
+    float binWidth()const{return m_binWidth;}
+    float min()const{return m_min;}
+    float max()const{return m_max;}
+
     float mean()const{ return m_sum/m_n;}
     float sigma()const;
 

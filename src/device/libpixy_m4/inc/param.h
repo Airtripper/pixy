@@ -35,6 +35,7 @@ int32_t prm_getAll(const uint16_t &index, Chirp *chirp);
 
 int prm_setShadowCallback(const char *id, ShadowCallback callback);
 int32_t prm_resetShadows();
+void prm_resetShadow(const char *id);
 
 int prm_add(const char *id, uint32_t flags, const char *desc, ...);
 bool prm_verifyAll();

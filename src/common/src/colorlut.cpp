@@ -412,9 +412,13 @@ int ColorLUT::generateLUT()
 
     if(m_useExpSigs){
 
+        // Evaluate global HSV value minimum
+        // and backup the signature's hue range
         float gValMinF=23.f;
+        float hueRngBck[CL_NUM_SIGNATURES];
         for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
             const ExperimentalSignature& es = expSig(s);
+            hueRngBck[s-1]=es.hsvHueRange();
             if(es.isActive() && es.hsvValMin()<gValMinF) gValMinF=es.hsvValMin();
         }
         int16_t gValMin = (gValMinF*255.f)+0.5f;
@@ -427,11 +431,19 @@ int ColorLUT::generateLUT()
         const int16_t stpUV=8;
 #else
         int16_t off = m_useExpLut ? 0 : 3;
-        int16_t stpUV=m_useExpLut ? 3 : 8;
+        int16_t stpUV = m_useExpLut ? 3 : 8;
 #endif
 
         for( int16_t u=-bm+off; u<=bm; u+=stpUV){
             for( int16_t v=-bm+off; v<=bm; v+=stpUV){
+
+                // increase signatures hue range to LUT resolution
+                float dHue = SQRTF( ((u*u)>>6) + ((v*v)>>6) );
+                dHue = dHue>0.0f ? r2d/dHue : 180.0f;
+                for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
+                    float hueRng = dHue>hueRngBck[s-1] ? dHue : hueRngBck[s-1];
+                    accExpSig(s).setHsvHueRange(hueRng, true);
+                }
 
                 // prepare limits for the inner loop thru g values
                 // 0 <= {r=u+g,b=v+g,g} <=255
@@ -442,20 +454,22 @@ int ColorLUT::generateLUT()
                 if(gMax>bm-u)gMax=bm-u;
                 if(gMax>bm-v)gMax=bm-v;
 
-                 // calc the (u,v) position in the color LUT
+                // calc the (u,v) position in the color LUT
                 int16_t ui = u >> (9-CL_LUT_COMPONENT_SCALE);
                 ui &= (1<<CL_LUT_COMPONENT_SCALE)-1;
                 int16_t vi = v >> (9-CL_LUT_COMPONENT_SCALE);
                 vi &= (1<<CL_LUT_COMPONENT_SCALE)-1;
                 int16_t lutIdx = (ui<<CL_LUT_COMPONENT_SCALE)+ vi;
 
-                for( uint16_t g=gMin; g<=gMax; g+=stpG){
 #ifdef PIXY
                     if(getTimer(keepAliveTmr)>keepAliveTmOut){
                          g_chirpUsb->service(); // keep alive
                          setTimer(&keepAliveTmr);
                     }
 #endif
+
+                for( uint16_t g=gMin; g<=gMax; g+=stpG){
+
                     // bail out early on dark colours (guess the speed gain is small, but now it's in)
                     if(g<gValMin && u+g<gValMin && v+g<gValMin)continue;
 
@@ -512,6 +526,10 @@ int ColorLUT::generateLUT()
                     }
                 }
             }
+        }
+        // rstore original hue ranges
+        for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
+            accExpSig(s).setHsvHueRange(hueRngBck[s-1]);
         }
     }
     else
@@ -681,11 +699,8 @@ float ColorLUT::testRegion(const RectA &region, const Frame8 &frame, UVPixel *me
     for (i=0, test=0; i<endpoint; i+=CL_GROW_INC)
     {
         getMean(subRegion, frame, &subMean);
-#ifdef PIXY
-    distance = vsqrtf((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
-#else
-    distance = sqrtf((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
-#endif
+        distance = SQRTF((float)((mean->m_u-subMean.m_u)*(mean->m_u-subMean.m_u) + (mean->m_v-subMean.m_v)*(mean->m_v-subMean.m_v)));
+
         if ((uint32_t)distance<m_maxDist)
         {
             int32_t n = points->size();
