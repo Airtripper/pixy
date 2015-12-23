@@ -95,12 +95,6 @@ uint32_t saturate(uint32_t color)
 
     rgbUnpack(color, &r, &g, &b);
 
-    /*uint32_t min = MIN( r, g);
-    min = MIN( min, b);
-    r-=min;
-    g-=min;
-    b-=min;*/
-
     max = MAX(r, g);
     max = MAX(max, b);
 

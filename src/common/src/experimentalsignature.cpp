@@ -124,6 +124,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     // 1) abuse the histos, used later for hue and saturation, to calculate a mean u and v
     Histo hueHist( -1.0f, 1.0f);
     Histo satHist( -1.0f, 1.0f);
+    Histo valHist( 0.0f, 1.0f);
     RGBPixel rgbPix;
     pixIter.reset();
     while(pixIter.next( 0 ,&rgbPix)){
@@ -131,6 +132,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
          translateRGB( rgbPix.m_r,rgbPix.m_g,rgbPix.m_b,  u, v, sat, val );
          hueHist.add( u);
          satHist.add( v);
+         valHist.add( val);
     }
     float uMean = hueHist.mean();
     float vMean = satHist.mean();
@@ -140,6 +142,10 @@ void ExperimentalSignature::init( IterPixel& pixIter)
 
     // now analyse the saturation and hue distribution
     // hue is rotated by hueOff to the center of the histo before
+    // ... If the atan2 stuff below is too expensive for the M4,
+    // I guess, that it's just sufficient to take the median u and v
+    // from above directly to determine the hue median and range.
+    // Maybe there is no difference at all.
     hueHist.reset( -pi, pi);
     satHist.reset( 0.0f, 1.0f);
     pixIter.reset();
@@ -154,19 +160,19 @@ void ExperimentalSignature::init( IterPixel& pixIter)
          satHist.add( sat);
     }
 
-    // the selection cuts on the value are initialized to fix defaults
-    m_hsvValMin = 0.2f;
-    m_hsvValMax = 1.0f;
-
     // saturation and hue selection cuts are defined by the values
     // for 5% and 95% of the cumulative distribution
     const float outLim = 0.05f;
-    m_hsvSatMin = satHist.X( outLim)-outLim;
-    if(m_hsvSatMin<0.0f) m_hsvSatMin=0.0f;
-    //m_hsvSatMax = satHist.X( 1.0f-outLim);
-    m_hsvSatMax = 1.0f;
-    m_hsvHueRange = ( hueHist.X(1.0f-outLim) - hueHist.X(outLim) ) * 0.5f/(1.0f-outLim);
-    const float dMin = 2.0f*d2r;
+    const float outFac = 3.0f;
+    float low = satHist.X( outLim);
+    float hgh = satHist.X( 1.0f-outLim);
+    float add = (hgh-low)*outLim*outFac;
+    m_hsvSatMin = low-add >0.0f ? low-add : 0.0f;
+    m_hsvSatMax = hgh+add <1.0f ? hgh+add : 1.0f;
+
+    m_hsvHueRange = hueHist.X(1.0f-outLim);
+    m_hsvHueRange += m_hsvHueRange * outLim * outFac;
+    const float dMin = 3.0f*d2r; // don't set min hue lim smaller than LUT resolution
     if(m_hsvHueRange<dMin)m_hsvHueRange=dMin;
     m_hsvCosDeltaHueMin = cosf( m_hsvHueRange );
 
@@ -195,14 +201,32 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     // now get the saturation median
     m_hsvSatMed=satHist.X(0.5);
 
+    // set the value limits depending on the saturation result
+    if(m_hsvSatMed>0.2f){
+        // we have some colour => set the value acceptance range to wide defaults
+        m_hsvValMin = 0.2f;
+        m_hsvValMax = 1.0f;
+        m_hsvSatMax = 1.0f; // and also maximise the upper saturation cut
+    }else{
+        // rather grey => use value range of the training set
+        low = valHist.X( outLim);
+        hgh = valHist.X( 1.0f-outLim);
+        add = (hgh-low)*outLim * outFac;
+        m_hsvValMin = low-add >0.0f ? low-add : 0.0f;
+        m_hsvValMax = hgh+add <1.0f ? hgh+add : 1.0f;
+        m_hsvSatMin = 0.0f; // and also minimise the lower saturation cut
+        if(m_hsvSatMax<0.05f)m_hsvSatMax=0.05f; // and set sat max above the LUT resolution
+        setHsvHueRange(hueDeltaLim); // and set hue lim to full circle
+    }
+
     // and calculate the u, v and hue medians
     float hueMed=hueHist.X(0.5)+hueOff;
     m_posUV.m_uMed = m_hsvSatMed*cosf( hueMed);
     m_posUV.m_vMed = m_hsvSatMed*sinf( hueMed);
-#ifndef PIXY
-    EXPLOG("init: uMed=%.2f vMed=%.2f satMed=%.2f satMin=%.2f satMax=%.2f hueMed=%.2f hueRng=%.2f hueCos=%.4f hueOff=%.2f",
-           uMed(), vMed(), m_hsvSatMed, m_hsvSatMin, m_hsvSatMax, hueMed*r2d, m_hsvHueRange*r2d, m_hsvCosDeltaHueMin, hueOff*r2d );
-#endif
+
+    /*DBG("uMed=%.2f vMed=%.2f satMed=%.2f satMin=%.2f satMax=%.2f hueMed=%.2f hueRng=%.1f hueCos=%.4f hueOff=%.2f",
+           uMed(), vMed(), m_hsvSatMed, m_hsvSatMin, m_hsvSatMax, hueMed*r2d, m_hsvHueRange*r2d, m_hsvCosDeltaHueMin, hueOff*r2d );*/
+
     m_isActive = true;
 }
 
@@ -287,7 +311,7 @@ float ExperimentalSignature::hsvHueRange() const
 
 void ExperimentalSignature::setHsvHueRange(float hsvHueRange)
 {
-    m_hsvHueRange = hsvHueRange<hueDeltaLim ? hsvHueRange*d2r : pi;
+    m_hsvHueRange = hsvHueRange<=hueDeltaLim-bite ? hsvHueRange*d2r : pi;
     m_hsvCosDeltaHueMin = cosf(m_hsvHueRange);
 }
 
@@ -320,6 +344,59 @@ void ExperimentalSignature::setPosUV(const ExpSigPos &posUV)
 
 }
 
+
+
+
+
+void Histo::reset(float min, float max){
+    memset( m_bins, 0, sizeof(uint16_t)*m_nBins);
+    m_low = m_sum = m_sum2 = m_n=0;
+    if(max!=min){
+        m_min = min;
+        m_max = max;
+        m_binWidth = (max-min)/m_nBins;
+        m_binWidthInv = 1.0f/m_binWidth;
+    }
+
+}
+
+Histo::Histo( float min, float max, uint16_t nBins){
+    m_nBins=nBins;
+    m_bins = new uint16_t[m_nBins];
+    reset( min, max);
+}
+
+void Histo::add(float val){
+    ++m_n;
+    m_sum+=val;
+    m_sum2+=val*val;
+    if(val<m_min) ++m_low;
+    else{
+        uint16_t bin = (val-m_min)*m_binWidthInv;
+        if(bin<m_nBins) ++m_bins[bin];
+    }
+}
+
+float Histo::sigma() const {
+    float var = m_sum2 - m_sum*m_sum/m_n; // acuracy? I should have read D.K.
+    var /= m_n-1;
+#ifdef PIXY
+    return var>0 ? vsqrtf(var) : 0.0f;
+#else
+    return var>0 ? sqrtf(var) : 0.0f;
+#endif
+}
+
+float Histo::X(float phi)const{
+    uint16_t lim=phi*m_n+0.5f;
+    uint16_t sum = m_low;
+    if(sum>lim) return m_min;
+    for(uint16_t b=0; b<m_nBins; ++b){
+        if(sum+m_bins[b]>lim) return m_min + m_binWidth * ( b + float(lim-sum) / m_bins[b] );
+        sum += m_bins[b];
+    }
+    return m_max;
+}
 
 
 

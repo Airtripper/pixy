@@ -241,10 +241,8 @@ int Renderer::renderBA81(uint8_t renderFlags, uint16_t width, uint16_t height, u
             uint32_t max = MAX(r,g);
             max = MAX(max,b);
 
-            // highlight bad exposure if saturation is <50% and value==255 or value<50
-            if( m_highlightOverexp && badExpCol && 2*(max-min)<max && (max<50 || max==0xff)){
-                //if (m_highlightOverexp && (r==0xff || g==0xff || b==0xff))
-                //*line++ = (0xff<<24)| ((255-r)<<16) | ((255-g)<<8) | ((255-b)<<0); // | 0xff0000;
+            // highlight bad exposure (blink blackNwhite) if saturation is <50% and value==255 or value<50
+            if( m_highlightOverexp && badExpCol && 2*(max-min)<max && (max<50 || max>250)){
                 uint32_t BnW = r+g+b;
                 BnW/=3;
                 *line++ = (0xff<<24) | (BnW<<16) | (BnW<<8) | (BnW<<0);

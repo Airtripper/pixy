@@ -120,7 +120,6 @@ static ChirpProc g_getRLSFrameM0 = -1;
 
 int cc_loadLut(void)
 {
-	DBG("ldLUT 0");
 	int i, res;
 	uint32_t len;
 	char id[32];
@@ -135,21 +134,16 @@ int cc_loadLut(void)
 			return res;
 		g_blobs->m_clut.setSignature(i, *psig);
 
-		DBG("load esig%d",i);
 		sprintf(id, parName_eSigPos, i);
-		// get signature and add to color lut
 		ExpSigPos* eSig;
 		res = prm_get(id, &len, &eSig, END);
 		if (res<0){
-			DBG("Ouch %i",res);
+                        DBG("cc_loadLut Ouch %i",res);
 			return res;
 		}
 		g_blobs->m_clut.accExpSig(i).setPosUV(*eSig);
-		DBG("ok %.2f %.2f", g_blobs->m_clut.expSig(i).uMed(), g_blobs->m_clut.expSig(i).vMed() );
 	}
-	DBG("loadLUT genLUT %d",g_blobs->m_clut.m_useExpSigs);
 	g_blobs->m_clut.generateLUT();
-	DBG("ok");
 	// go ahead and flush since we've changed things
 	g_qqueue->flush();
 
@@ -175,54 +169,45 @@ void cc_shadowCallback(const char *id, const float &val)
 }
 
 void relut(){
-	 DBG("relut?");
     if (exec_pause()) // pause M0, but only generate LUT if we're running
     {
         // generate lut while M0 is paused
-    	DBG("yes");
     	g_blobs->m_clut.generateLUT();
         exec_resume();
-        DBG("ok");
     }
 }
 void eSigUse_shadowCallback(const char *id, const uint8_t &val){
-    g_blobs->m_clut.m_useExpSigs=val;
+    g_blobs->m_clut.setUseExpSigs( val);
     relut();
 }
 void eSigAct_shadowCallback(const char *id, const uint8_t &val){
     uint8_t signum = id[4]-'0'; // extract signature number
     g_blobs->m_clut.accExpSig(signum).setIsActive(val);
-    DBG("ACT %i %i",signum,val);
     relut();
 }
 void eSigHue_shadowCallback(const char *id, const float &val){
     uint8_t signum = id[4]-'0'; // extract signature number
     g_blobs->m_clut.accExpSig(signum).setHsvHueRange(val);
-    DBG("HUE %i %.1f",signum,val);
     relut();
 }
 void eSigSatMin_shadowCallback(const char *id, const float &val){
     uint8_t signum = id[4]-'0'; // extract signature number
     g_blobs->m_clut.accExpSig(signum).setHsvSatMin(val);
-    DBG("Smin %i %.1f",signum,val);
     relut();
 }
 void eSigSatMax_shadowCallback(const char *id, const float &val){
     uint8_t signum = id[4]-'0'; // extract signature number
     g_blobs->m_clut.accExpSig(signum).setHsvSatMax(val);
-    DBG("Smax %i %.1f",signum,val);
     relut();
 }
 void eSigValMin_shadowCallback(const char *id, const float &val){
     uint8_t signum = id[4]-'0'; // extract signature number
     g_blobs->m_clut.accExpSig(signum).setHsvValMin(val);
-    DBG("Vmin %i %.1f",signum,val);
     relut();
 }
 void eSigValMax_shadowCallback(const char *id, const float &val){
     uint8_t signum = id[4]-'0'; // extract signature number
     g_blobs->m_clut.accExpSig(signum).setHsvValMax(val);
-    DBG("Vmax %i %.1f",signum,val);
     relut();
 }
 
@@ -241,16 +226,12 @@ void cc_ledBrightnessCallback(const char *id, const uint16_t &val)
 	led_setMaxCurrent(g_ledBrightness);
 }
 
-
-
 void cc_loadParams(void)
 {
 	int i;
 	ColorSignature signature;
 	char id[32], desc[100];
 	float range;
-
-	DBG("ldPrm 0");
 
 	// set up signatures, and ranges, load later
 	for (i=1; i<=CL_NUM_SIGNATURES; i++)
@@ -280,12 +261,10 @@ void cc_loadParams(void)
 	prm_add(id, PRM_FLAG_ADVANCED | PRM_FLAG_CHECKBOX, desc, UINT8(0), END);
 	uint8_t valB;
 	prm_get(id, &valB, END);
-	g_blobs->m_clut.m_useExpSigs=valB;
+	g_blobs->m_clut.setUseExpSigs( valB);
 	prm_setShadowCallback(id, (ShadowCallback)eSigUse_shadowCallback);
 
 	for (i=1; i<=CL_NUM_SIGNATURES; i++){
-
-		DBG("add esig %i",i);
 
 		ExpSigPos espDummy;
 		float valF;
@@ -337,8 +316,6 @@ void cc_loadParams(void)
 		prm_get(id, &valF, END);
 		g_blobs->m_clut.accExpSig(i).setHsvValMax(valF);
 		prm_setShadowCallback(id, (ShadowCallback)eSigValMax_shadowCallback);
-
-		DBG("ok");
 	}
 
 
@@ -370,8 +347,6 @@ void cc_loadParams(void)
 	uint32_t minArea, growDist;
 	float miny, ccGain;
 
-	DBG("ldPrm 1");
-
 	prm_get("Max blocks", &maxBlobs, END);
 	prm_get("Max blocks per signature", &maxBlobsPerModel, END);
 	prm_get("Min block area", &minArea, END);
@@ -386,39 +361,28 @@ void cc_loadParams(void)
 	g_blobs->m_clut.setGrowDist(growDist);
 	led_setMaxCurrent(g_ledBrightness);
 	
-	DBG("ldPrm 2");
-
 	cc_loadLut();
-
-	DBG("ldPrm 3");
 }
 
 int cc_init(Chirp *chirp)
 {
-	DBG("Init 0");
 	g_qqueue = new Qqueue;
 	g_blobs = new Blobs(g_qqueue, LUT_MEMORY);
 
-	DBG("Init 1");
 	chirp->registerModule(g_module);	
 
-	DBG("Init 2");
 	g_getRLSFrameM0 = g_chirpM0->getProc("getRLSFrame", NULL);
 
 	if (g_getRLSFrameM0<0){
-		DBG("Init Ouch");
+                DBG("cc_init Ouch");
 		return -1;
 	}
-	DBG("Init 3");
 	cc_loadParams(); // setup default vals and load parameters
-	DBG("Init 4");
 
 	return 0;
 }
 
 void saveNactivateExpSig(uint8_t idx){
-
-	DBG("saveNact esig%d",idx);
 
 	const int len=32;
 	char id[32];
@@ -446,7 +410,9 @@ void saveNactivateExpSig(uint8_t idx){
 	snprintf(id, len, parName_eSigValMax, idx);
 	prm_set(id, FLT32(eSig.hsvValMax()), END);
 
-	DBG("ok");
+	// maybe there's a less brute force way to update the corresponding sliders in pixyMon's config dialog
+	// but I don't have any clue how to use that documentation free "dirty", "shadow", "chirp" ... parameter-stuff.
+	prm_resetShadows();
 }
 
 

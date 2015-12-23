@@ -267,8 +267,6 @@ _ASM_LABEL(beg1)
 	// cycle
 	// +++++++++++++++++++++++++ tweaked hgs
 	// apply a cut on y and increment qmem only if pixel passed the y selection
-	// y min max selection values are stored in an unused slots of the LUT
-	// r1,r6,r7,r8 are available here
 
 	_ASM(ADDS 	r4, #12)  		// inc col, skipped pixel
 

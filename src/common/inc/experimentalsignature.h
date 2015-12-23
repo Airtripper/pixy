@@ -22,7 +22,7 @@ const float bite = 1e-6f; // something small for float comparisons
 const float pi = 3.1415926536f;
 const float d2r = pi/180.0f;
 const float r2d = 180.0f/pi;
-const float hueDeltaLim = 23.0f-bite; // a hue delta above 30 deg? => deactivate the limit and accept the full hue circle
+const float hueDeltaLim = 23.0f; // a hue delta above x deg? => deactivate the limit and accept the full hue circle
 
 // parameter names or their format strings
 extern const char* parName_eSigUse;
@@ -119,71 +119,39 @@ public:
 
 
 /// A simple histogram class
-struct Histo{
+class Histo{
 
-    static const uint16_t s_nBins=64;
-    uint16_t m_bins[s_nBins];
-    uint16_t m_low;
-    float m_min;
-    float m_max;
-    float m_binWidth;
-    float m_binWidthInv;
-    float m_sum;
-    float m_sum2;
+    uint16_t* m_bins;   // the bins on heap
+    uint16_t m_nBins;   // number of bins
+    uint16_t m_n;       // number of entries
+    uint16_t m_low;     // number of entries below bin range
+    float m_min;        // lower bin range limit
+    float m_max;        // upper bin range limit
+    float m_binWidth;   // bin width
+    float m_binWidthInv;// inverse bin width
+    float m_sum;        // sum of entries
+    float m_sum2;       // sum of squared etries
 
-    uint16_t m_n;
+    Histo(Histo&){};
+    Histo& operator=(Histo&);
 
-    void reset(float min, float max){
-        memset( m_bins, 0, sizeof(uint16_t)*s_nBins);
-        m_low = 0;
-        m_min = min;
-        m_max = max;
-        m_binWidth = (max-min)/s_nBins;
-        m_binWidthInv = 1.0f/m_binWidth;
-        m_sum = m_sum2 = 0;
-        m_n=0;
-    }
+public:
 
-    Histo( float min, float max){ reset(min,max);}
+    Histo( float min, float max, uint16_t nBins=64);
+    ~Histo(){ delete[] m_bins; }
 
-    void add(float val){
-        ++m_n;
-        m_sum+=val;
-        m_sum2+=val*val;
-        if(val<m_min) ++m_low;
-        else{
-            uint16_t bin = (val-m_min)*m_binWidthInv;
-            if(bin<s_nBins) ++m_bins[bin];
-        }
-    }
+    /// reset histo to new range
+    void reset(float min=0.0f, float max=0.0f);
 
-    // float binVal(uint_16 b){ return m_min+(b+0.5f)*m_binWidth;}
-    // uint16_t binCnt(uint16_t b){ return m_bins[b];}
+    void add(float val);
 
-    float mean(){ return m_sum/m_n;}
-
-    float sigma(){
-        float var = m_sum2 - m_sum*m_sum/m_n; // acuracy? I should have read D.K.
-        var /= m_n-1;
-
-#ifdef PIXY
-    return var>0 ? vsqrtf(var) : 0.0f;
-#else
-    return var>0 ? sqrtf(var) : 0.0f;
-#endif
-    }
+    // float binVal(uint_16 b)const{ return m_min+(b+0.5f)*m_binWidth;}
+    // uint16_t binCnt(uint16_t b)const{ return m_bins[b];}
+    float mean()const{ return m_sum/m_n;}
+    float sigma()const;
 
     /// get value that corresponds to given value [0,1] of the cumulative distribution
-    float X(float phi){
-        uint16_t lim=phi*m_n+0.5f;
-        uint16_t sum = m_low;
-        if(sum>lim) return m_min;
-        for(uint16_t b=0; b<s_nBins; ++b){
-            if(sum+m_bins[b]>lim) return m_min + m_binWidth * ( b + float(lim-sum) / m_bins[b] );
-            sum += m_bins[b];
-        }
-        return m_max;
-    }
+    float X(float phi)const;
 };
 
 #endif // EXPERIMENTALSIGNATURE_H

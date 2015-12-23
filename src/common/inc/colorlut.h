@@ -25,7 +25,7 @@
 
 #define CL_NUM_SIGNATURES               7
 #define CL_LUT_COMPONENT_SCALE          6
-#define CL_LUT_SIZE                     ((1<<(CL_LUT_COMPONENT_SCALE*2))+0x200)  // duplicated in exec_m0.c (LUT_MEMORY_SIZE)!
+#define CL_LUT_SIZE                     ((1<<(CL_LUT_COMPONENT_SCALE*2))+0x200)  // 4K uv-LUT + 0.5K y-LUT, duplicated in exec_m0.c (LUT_MEMORY_SIZE)!
 #define CL_LUT_ENTRY_SCALE              15
 #define CL_GROW_INC                     4
 #define CL_MIN_Y_F                      0.05 // for when generating signatures, etc
@@ -40,7 +40,6 @@
 
 #ifndef PIXY
 extern bool g_logExp;
-//#define EXPLOG printf
 #ifndef PIXY
 #define EXPLOG(...)  if(g_logExp)qDebug(__VA_ARGS__)
 #else
@@ -64,7 +63,6 @@ struct ColorSignature
 	uint32_t m_rgb;
     uint32_t m_type;
 };
-
 
 struct RuntimeSignature
 {
@@ -109,7 +107,6 @@ public:
 	int setSignature(uint8_t signum, const ColorSignature &sig);
 
     int generateLUT();
-
     void clearLUT(uint8_t signum=0);
 	void updateSignature(uint8_t signum);
     void growRegion(const Frame8 &frame, const Point16 &seed, Points *points);
@@ -123,14 +120,15 @@ public:
     // these should be in little access methods, but they're here to speed things up a tad
     ColorSignature m_signatures[CL_NUM_SIGNATURES];
     RuntimeSignature m_runtimeSigs[CL_NUM_SIGNATURES];
-
     uint32_t m_miny;
-    uint16_t m_expYMin; // lowest accepted y=r+g+b in LUT generation, used in Blobs::runlengthAnalysis to speed things up
 
     /// non const access to experimental signature of given ID [1-7]
     inline ExperimentalSignature& accExpSig(uint8_t idx) {return m_expSigs[(idx-1)&0x7];}
     /// returns experimental signature of given ID [1-7]
     inline const ExperimentalSignature& expSig(uint8_t idx) const {return m_expSigs[(idx-1)&0x7];}
+
+    bool useExpSigs()const{return m_useExpSigs;}
+    void setUseExpSigs(bool ues){m_useExpSigs=ues;}
 
 private:
     ExperimentalSignature m_expSigs[CL_NUM_SIGNATURES];
@@ -150,9 +148,9 @@ private:
     float m_sigRanges[CL_NUM_SIGNATURES];
 
     // experimental signature stuff
-    public: //evillive
     bool m_useExpSigs;
 #ifndef PIXY
+public:
     bool m_useExpLut;
 #endif
 };

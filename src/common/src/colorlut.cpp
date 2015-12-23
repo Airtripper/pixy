@@ -130,6 +130,7 @@ bool IterPixel::nextHelper(UVPixel *uv, RGBPixel *rgb, bool omitCutOnY)
             uv->m_u = u;
             uv->m_v = v;
         }
+
         m_x += 2;
         return true;
     }
@@ -323,9 +324,6 @@ int ColorLUT::generateSignature(const Frame8 &frame, const RectA &region, uint8_
 {
     if (signum<1 || signum>CL_NUM_SIGNATURES)
         return -1;
-
-
-
     // this is cool-- this routine doesn't allocate any extra memory other than some stack variables
     IterPixel ip(frame, region);
     iterate(&ip, m_signatures+signum-1);
@@ -333,27 +331,8 @@ int ColorLUT::generateSignature(const Frame8 &frame, const RectA &region, uint8_
 
     ip.reset();
     accExpSig(signum).init( ip);
-/*
-    // hgs evillive: check if still needed
-    // set the cooked render mode filter pass indication highlight color
-    uint32_t rm=0, gm=0, bm=0;
-    RGBPixel rgbPix;
-    int cnt=0;
-    ip.reset();
-    while(ip.next( 0 ,&rgbPix)){
-        rm+=rgbPix.m_r;
-        gm+=rgbPix.m_g;
-        bm+=rgbPix.m_b;
-        ++cnt;
-    }
-    rm/=cnt;
-    gm/=cnt;
-    bm/=cnt;
-    //EXPLOG("hghlght %d => %d %d %d", cnt, rm, gm, bm);
-    m_signatures[signum-1].m_rgb = rgbPack( rm, gm, bm);
-*/
-    updateSignature(signum);
 
+    updateSignature(signum);
     return 0;
 }
 
@@ -372,7 +351,6 @@ int ColorLUT::generateSignature(const Frame8 &frame, const Point16 &point, Point
     accExpSig(signum).init( ip);
 
     updateSignature(signum);
-
     return 0;
 }
 
@@ -414,19 +392,21 @@ int ColorLUT::setSignature(uint8_t signum, const ColorSignature &sig)
 	return 0;
 }
 
+
 int ColorLUT::generateLUT()
 {
 
 #ifdef PIXY
     uint32_t timer;
     setTimer(&timer);
-
+#if 1
     const uint32_t keepAliveTmOut = 50000;
     uint32_t keepAliveTmr;
     setTimer(&timer);
 #endif
-
+#else
     int collisions = 0;
+#endif
 
     clearLUT();
 
@@ -439,13 +419,19 @@ int ColorLUT::generateLUT()
         }
         int16_t gValMin = (gValMinF*255.f)+0.5f;
 
-        m_expYMin=4223;
-
         // loop with sufficient granularity thru uv space
-        const int16_t stepSz = 5; // 255%5=0 !
         const int16_t bm=(1<<8)-1;
-        for( int16_t u=-bm; u<=bm; u+=stepSz){
-            for( int16_t v=-bm; v<=bm; v+=stepSz){
+        const int16_t stpG=3;
+#ifdef PIXY
+        const int16_t off=3;
+        const int16_t stpUV=8;
+#else
+        int16_t off = m_useExpLut ? 0 : 3;
+        int16_t stpUV=m_useExpLut ? 3 : 8;
+#endif
+
+        for( int16_t u=-bm+off; u<=bm; u+=stpUV){
+            for( int16_t v=-bm+off; v<=bm; v+=stpUV){
 
                 // prepare limits for the inner loop thru g values
                 // 0 <= {r=u+g,b=v+g,g} <=255
@@ -456,23 +442,22 @@ int ColorLUT::generateLUT()
                 if(gMax>bm-u)gMax=bm-u;
                 if(gMax>bm-v)gMax=bm-v;
 
+                 // calc the (u,v) position in the color LUT
                 int16_t ui = u >> (9-CL_LUT_COMPONENT_SCALE);
                 ui &= (1<<CL_LUT_COMPONENT_SCALE)-1;
                 int16_t vi = v >> (9-CL_LUT_COMPONENT_SCALE);
                 vi &= (1<<CL_LUT_COMPONENT_SCALE)-1;
                 int16_t lutIdx = (ui<<CL_LUT_COMPONENT_SCALE)+ vi;
 
-                for( uint16_t g=gMin; g<=gMax; g+=stepSz){
+                for( uint16_t g=gMin; g<=gMax; g+=stpG){
 #ifdef PIXY
                     if(getTimer(keepAliveTmr)>keepAliveTmOut){
                          g_chirpUsb->service(); // keep alive
                          setTimer(&keepAliveTmr);
                     }
 #endif
-
-                    // bail out early on dark colours
-                    // (y=r+g+b=u+v+3g) >= (val=max(r,g,b))
-                    if(u+v+3*g<gValMin)continue;
+                    // bail out early on dark colours (guess the speed gain is small, but now it's in)
+                    if(g<gValMin && u+g<gValMin && v+g<gValMin)continue;
 
                     // determine the most probable signature by comparing distances in the u/v plane
                     float gf=g*rgbNorm;
@@ -484,7 +469,6 @@ int ColorLUT::generateLUT()
                         // check signature compatibility and calc the distance in the (u,v) plane
                         float uf,vf;
                         const ExperimentalSignature& sig = expSig(s);
-                        //if( sig.isActive() && !(m_lut[lutIdx] & (1<<(s-1))) && sig.isRgbAccepted(rf,gf,bf, uf,vf)){
                         if( sig.isActive() && sig.isRgbAccepted(rf,gf,bf, uf,vf)){
                             float du = uf-sig.uMed();
                             float dv = vf-sig.vMed();
@@ -495,9 +479,10 @@ int ColorLUT::generateLUT()
                             }
                         }
                     }
-                    // calc the (u,v) position in the color LUT ...
                     if(bestSigId){
 #ifndef PIXY
+                        if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
+
                         if( m_useExpLut ){
                             int16_t ui,vi;
                             ColorLutCalculatorExp::calcUV( u+g,g,v+g, ui,vi);
@@ -507,16 +492,18 @@ int ColorLUT::generateLUT()
                             // division approximation used in the M0 preselection (u,v) caculation.
                             // Those collisions are re-checked in the final filter step performed on the M4
                             uint16_t lutIdx = (vi<<CL_LUT_COMPONENT_SCALE) | ui; // alternative LUT arrangement that can be visualized, see ColorLutCalculatorExp::calcUV
-                            if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
                             m_lut[lutIdx] |= 1<<(bestSigId-1);
                         }else
 #endif
                         {
-                            uint32_t y = 2*(u+v+3*g);
-                            if(y<m_expYMin) m_expYMin=y;
-                            if(m_lut[lutIdx] & ~(1<<(bestSigId-1))) ++collisions;
+                            // update the 7bit bitmap of compatible signatures in the uv-LUT
                             m_lut[lutIdx] |= 1<<(bestSigId-1);
 
+                            // Update the y-LUT
+                            // store for each value of the 7-signature-bitmap ([1..127]) entered in the uv-LUT
+                            // the minimum and maximum y=r+g+b=u+v+3g seen during the LUT setup sweep
+                            // As Pixy accumulates two pixels per qVal, multiply the min and max with 2.
+                            uint32_t y = 2*(u+v+3*g);
                             uint16_t* yLut = (uint16_t*)(m_lut+0x1000);
                             uint32_t yLutIdx = 2*m_lut[lutIdx];
                             if(y<yLut[yLutIdx]) yLut[yLutIdx]=y;
@@ -563,8 +550,9 @@ int ColorLUT::generateLUT()
                             v &= (1<<CL_LUT_COMPONENT_SCALE)-1;
 
                             bin = (u<<CL_LUT_COMPONENT_SCALE)+ v;
-
+#ifndef PIXY
                             if(m_lut[bin] && m_lut[bin]!= (1<<sig) ) ++collisions;
+#endif
 
                             if (m_lut[bin]==0 || m_lut[bin] > (1<<sig) ){
                                 // lower index signatures have higher prio and kick lower prio signatures out of the LUT
@@ -584,7 +572,11 @@ int ColorLUT::generateLUT()
     }
 
 #ifndef PIXY
-    EXPLOG("LUT Dump (collisions=%d, yMin=%d)", collisions, m_expYMin);
+    EXPLOG("LUT Dump (collisions=%d)", collisions);
+
+    uint16_t* yLut = (uint16_t*)(m_lut+0x1000);
+    for(uint32_t i=0; i<128; ++i) if(yLut[2*i]!=0xffff && yLut[2*i+1]!=0xffff) EXPLOG("7sigs=%2X  %3d < y < %3d", i, yLut[2*i], yLut[2*i+1] );
+
     const int sz = (1<<CL_LUT_COMPONENT_SCALE);
     const int strLen = sz*4+1;
     char str[strLen];
@@ -606,12 +598,10 @@ int ColorLUT::generateLUT()
         }
         EXPLOG(str);
     }
-    uint16_t* yLut = (uint16_t*)(m_lut+0x1000);
-    for(uint32_t i=0; i<128; ++i) EXPLOG("sig=%3u %3d < y < %3d", i, yLut[2*i], yLut[2*i+1] );
 #endif
 
 #ifdef PIXY
-    DBG("genLUT %d %dms", m_useExpSigs, (getTimer(timer)+500)/1000);
+    DBG("genLUT expSig=%d %dms", m_useExpSigs, (getTimer(timer)+500)/1000);
 #endif
 
     return 0;
