@@ -73,6 +73,10 @@ int videoLoop()
 {
 	led_set(0);  // turn off any stray led 
 
+	if(g_brightCntDwn>0){
+		if( (g_brightCntDwn-=2)<=0) cam_stabilizeBrightness();
+	}
+
 	if (g_execArg==0)
 		cam_getFrameChirp(CAM_GRAB_M1R2, 0, 0, CAM_RES2_WIDTH, CAM_RES2_HEIGHT, g_chirpUsb);
 	else 

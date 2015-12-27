@@ -30,7 +30,7 @@ ExperimentalSignature::~ExperimentalSignature()
 {}
 
 
-bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, float& v) const
+bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, float& v, float& hsvVal, float& hsvSat, float& dotProd) const
 {
     // The colorspace used in here somehow trial and error evolved from the one
     // originally used in e.g. Blobs::runlengthAnalysis, IterPixel::nextHelper and ColorLUT::generateLUT of FW 2.0.8
@@ -46,27 +46,27 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // this is more or less a duplicate of RuntimeSignature::calculateUV
 
     // calc rgb min and max
-    float hsvVal = g; // aka rgbMax
+    hsvVal = g; // aka rgbMax
     float rgbMin = g;
     if(r>hsvVal)hsvVal=r; else rgbMin=r;
     if(b>hsvVal)hsvVal=b;
-    if(b<rgbMin)rgbMin=b;
+    else if(b<rgbMin)rgbMin=b;
 
     // bail out early if not within hsv value limits
     // and handling of black pixels (division by zero prevention)
     // The additional cut "hsvVal<=1.0f" handles hsv values above 1.0
     // This might happen due to floating point inaccuracies or the g1/g2 bayer mess.
     if( hsvVal<m_hsvValMin+bite || (hsvVal>m_hsvValMax && hsvVal<=1.0f) ){
-        u=v=0.0f;
+        u=v=hsvSat=dotProd=0.0f;
         return hsvVal+m_hsvValMin+m_hsvSatMin < bite;  // return true if signature accepts black
     }
 
-    float hsvSat = hsvVal-rgbMin;  // ... not really as sat=(val-min)/val but I wanted to defer the division after the next bail out check
+    hsvSat = hsvVal-rgbMin;  // ... not really as sat=(val-min)/val but I wanted to defer the division after the next bail out check
 
     // bail out early if not within hsv saturation limits
     // and handling of grey pixels (division by zero prevention)
     if( hsvSat<m_hsvSatMin*hsvVal+bite || hsvSat>m_hsvSatMax*hsvVal) {
-        u=v=0;
+        u=v=hsvSat=dotProd=0.0f;
         return hsvSat+m_hsvSatMin<bite ; // return true if signature accepts 255 shades of grey ... :D
     }
 
@@ -94,14 +94,17 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // We got here with with zero signature saturation => Accept the candidate
     // This bail out prevents a division by zero below.
     // We could have bailed out earlier, but we wanna return valid u and v values
-    if(m_hsvSatMed<bite)return true;
+    if(m_hsvSatMed<bite){
+        dotProd=0.0f;
+        return true;
+    }
 
     // calculate cosine delta hue using dot product: (u,v)_sig . (u,v)_pix / |(u,v)_sig| / |(u,v)_pix|
-    float cosHue = u*uMed() + v*vMed(); // missing the division? Made it a multiplication in the last check below
+    dotProd = u*uMed() + v*vMed(); // missing the division? Made it a multiplication in the last check below
 
     // Are we within HSV hue limits?
     // return cosHue>m_hsvCosDeltaHueMin; // save one division
-    return cosHue > m_hsvCosDeltaHueMin * hsvSat * m_hsvSatMed;
+    return dotProd > m_hsvCosDeltaHueMin * hsvSat * m_hsvSatMed;
 }
 
 
@@ -118,9 +121,9 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     // peaks at the jump from +pi to -pi, we have to rotate
     // the hue peak into a save region
     // 1) abuse the histos, used later for hue and saturation, to calculate a mean u and v
-    Histo hueHist( -1.0f, 1.0f);
-    Histo satHist( -1.0f, 1.0f);
-    Histo valHist( 0.0f, 1.0f);
+    Histo hueHist( -1.0f, 1.0f, 64);
+    Histo satHist( -1.0f, 1.0f, 64);
+    Histo valHist( 0.0f, 1.0f, 64);
     RGBPixel rgbPix;
     pixIter.reset();
     while(pixIter.next( 0 ,&rgbPix)){
@@ -169,7 +172,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     // just store the value for now, continues below ...
 
     // now have a closer look at the hue and sat distributions
-    // their median should be within a 1 one sigma window arround the mean val
+    // their median should be within a 1 one sigma window arround the mean value
     float mean = hueHist.mean();
     float sigma = hueHist.sigma();
     if(sigma<hueHist.binWidth())sigma=hueHist.binWidth();
@@ -256,7 +259,7 @@ void ExperimentalSignature::translateRGB(float r, float g, float b, float &u, fl
     float rgbMin = g;
     if(r>hsvVal)hsvVal=r; else rgbMin=r;
     if(b>hsvVal)hsvVal=b;
-    if(b<rgbMin)rgbMin=b;
+    else if(b<rgbMin)rgbMin=b;
 
     // a black pixel => set u and v zero and bail out (division by zero prevention)
     if( hsvVal<bite){
@@ -297,11 +300,6 @@ float ExperimentalSignature::hsvValMin() const
 void ExperimentalSignature::setHsvValMin(float hsvValMin)
 {
     m_hsvValMin = hsvValMin;
-}
-
-float ExperimentalSignature::hsvValMax() const
-{
-    return m_hsvValMax;
 }
 
 void ExperimentalSignature::setHsvValMax(float hsvValMax)
@@ -400,6 +398,14 @@ float Histo::X(float phi)const{
     return m_max;
 }
 
-
+float Histo::phi(float X)const{
+    if(X<m_min || m_n==0) return 0.0f;
+    int16_t bin = (X-m_min)*m_binWidthInv;
+    if(bin>=m_nBins) bin=m_nBins-1;
+    uint16_t sum = m_low;
+    for(uint16_t b=0; b<bin-1; ++b) sum+=m_bins[b];
+    sum += m_bins[bin] * (X-bin*m_binWidth) + 0.5f;
+    return float(sum)/m_n;
+}
 
 

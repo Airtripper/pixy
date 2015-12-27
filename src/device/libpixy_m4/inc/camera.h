@@ -41,6 +41,7 @@ uint32_t cam_getECV();
 
 int32_t cam_setBrightness(const uint8_t &brightness);
 uint32_t cam_getBrightness();
+void cam_stabilizeBrightness();
 
 int32_t cam_setLightMode(const uint8_t &mode);
 uint32_t cam_getLightMode();
@@ -58,6 +59,8 @@ void cam_loadParams();
 
 extern CSccb *g_sccb;
 extern Frame8 g_rawFrame;
+
+extern int16_t g_brightCntDwn;
 
 /* default register values for OV9715
 0x0=0x0

@@ -207,6 +207,26 @@ void CccModule::paramChange()
         relut = true;
     }
 
+    if (pixyParameterChanged("AutoBrightGain", &val))
+    {
+        m_blobs->m_autoBrightGain = val.toFloat();
+    }
+    if (pixyParameterChanged("AutoBrightBias", &val))
+    {
+        m_blobs->m_autoBrightBias = val.toFloat();
+    }
+    if (pixyParameterChanged("AutoWhiteGain", &val))
+    {
+        m_blobs->m_autoWhiteGain = val.toFloat();
+    }
+    if (pixyParameterChanged("Camera Brightness", &val))
+    {
+        m_blobs->m_autoBrightVal = val.toUInt();
+    }
+    if (pixyParameterChanged("AWB Value", &val))
+    {
+        m_blobs->setAutoWhiteWBV(val.toUInt());
+    }
 
     if (pixymonParameterChanged("Use exp LUT", &val)){
         m_blobs->m_clut.m_useExpLut = val.toBool();
@@ -429,6 +449,38 @@ int CccModule::renderCMV2(uint8_t renderFlags, uint16_t width, uint16_t height, 
     Frame8 rawFrame(frame, width, height);
     rls(&rawFrame);
     m_blobs->blobify();
+
+    static uint8_t brghtOld=80;
+    uint8_t brght = m_blobs->updateAutoBright();
+    if(brght != brghtOld){
+        brghtOld=brght;
+        Parameter *param = m_interpreter->m_pixyParameters.parameter("Camera Brightness");
+        m_interpreter->m_pixyParameters.mutex()->lock();
+        param->set( brght, true);
+        param->setDirty( true);
+        m_interpreter->m_pixyParameters.mutex()->unlock();
+        m_interpreter->updateParam();
+    }
+
+    static uint32_t wbvOld=0;
+    uint32_t wbv = m_blobs->updateAutoWhite();
+    if(wbv!=wbvOld){
+        wbvOld=wbv;
+        Parameter *param = m_interpreter->m_pixyParameters.parameter("AWB Value");
+        m_interpreter->m_pixyParameters.mutex()->lock();
+        param->set( wbv, true);
+        param->setDirty( true);
+        m_interpreter->m_pixyParameters.mutex()->unlock();
+        m_interpreter->updateParam();
+    }
+
+    static int16_t cnt=0;
+    if(++cnt>10){
+        cnt=0;
+        cprintf("brght=%d wbv=%06X\n", brght,wbv);
+    }
+
+
     m_blobs->getBlobs(&blobs, &numBlobs, &ccBlobs, &numCCBlobs);
     m_blobs->getRunlengths(&qVals, &numQvals);
 

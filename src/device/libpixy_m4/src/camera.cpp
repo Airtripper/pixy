@@ -170,6 +170,7 @@ static const ProcModule g_module[] =
 
 CSccb *g_sccb = NULL;
 Frame8 g_rawFrame;
+int16_t g_brightCntDwn = 0;
 
 static uint8_t g_mode = (uint8_t)-1;
 static uint8_t g_awb = 1;
@@ -415,11 +416,22 @@ uint32_t cam_getECV()
 
 int32_t cam_setBrightness(const uint8_t &brightness)
 {
-	g_sccb->Write(0x24, brightness); 
-	g_sccb->Write(0x25, brightness>CAM_BRIGHTNESS_RANGE?brightness-CAM_BRIGHTNESS_RANGE:0);
-	g_brightness = brightness;
-
+	//g_sccb->Write(0x24, brightness);
+	//g_sccb->Write(0x25, brightness>CAM_BRIGHTNESS_RANGE?brightness-CAM_BRIGHTNESS_RANGE:0);
+	if(g_brightness!=brightness){
+		const uint8_t range = 1;
+		g_sccb->Write(0x24, brightness+range<255 ? brightness+range : 255);
+		g_sccb->Write(0x25, brightness-range>0 ? brightness-range : 0);
+		g_brightCntDwn = 25;
+		g_brightness = brightness;
+	}
 	return 0;
+}
+
+void cam_stabilizeBrightness(){
+	const uint8_t range = CAM_BRIGHTNESS_RANGE;
+	g_sccb->Write(0x24, g_brightness+range<255 ? g_brightness+range : 255);
+	g_sccb->Write(0x25, g_brightness-range>0 ? g_brightness-range : 0);
 }
 
 uint32_t cam_getBrightness()
@@ -576,10 +588,12 @@ void cam_setRegs(const uint8_t *rPairs, int len)
 	cam_setBrightness(g_brightness);
 }
 
-void cam_shadowCallback(const char *id, const uint8_t &val)
+void cam_shadowCallback(const char *id, const uint32_t &val)
 {
 	if (strcmp(id, "Camera Brightness")==0)
 		cam_setBrightness(val);
+	else if (strcmp(id, "AWB Value")==0)
+		cam_setWBV(val);
 	else if (strcmp(id, "Auto Exposure Correction")==0)
 	{
 		if (val==0)
@@ -617,6 +631,8 @@ void cam_loadParams()
 
 	prm_add("AWB Value", PRM_FLAG_INTERNAL,
 		"", UINT32(0), END);
+	prm_setShadowCallback("AWB Value", (ShadowCallback)cam_shadowCallback);
+
 
 	uint8_t brightness, aec, awb, awbp;
 	uint32_t ecv, wbv;

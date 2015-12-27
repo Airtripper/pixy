@@ -24,7 +24,7 @@
 #include "parameters.h"
 #include "ui_configdialog.h"
 
-#define SLIDER_SIZE   125.0f
+#define SLIDER_SIZE   200.0f
 
 class Interpreter;
 

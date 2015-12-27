@@ -341,6 +341,14 @@ void cc_loadParams(void)
 	prm_add("Min block area", 0, 
 		"@c Handy Sets the minimum required area in pixels for a block.  Blocks with less area won't be sent. (default 20)", UINT32(20), END);
 
+	float valF;
+	prm_add("AutoBrightGain", PRM_FLAG_SLIDER, "@c Handy @m 0.0 @M 0.5 Sets Auto Bright control speed", FLT32(0.1f), END);
+	//prm_get(id, &valF, END);
+	//g_blobs->m_clut.accExpSig(i).setHsvValMax(valF);
+	//prm_setShadowCallback(id, (ShadowCallback)eSigValMax_shadowCallback);
+	prm_add("AutoBrightBias", PRM_FLAG_SLIDER, "@c Handy @m -0.5 @M 0.5 Sets Auto Bright control bias", FLT32(0.0f), END);
+	prm_add("AutoWhiteGain", PRM_FLAG_SLIDER, "@c Handy @m 0.0 @M 1.0 Sets Auto Bright control speed", FLT32(0.1f), END);
+
 	// load
 	uint8_t ccMode;
 	uint16_t maxBlobs, maxBlobsPerModel;

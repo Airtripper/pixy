@@ -59,6 +59,21 @@ public:
 	ColorLUT m_clut;
     Qqueue *m_qq;
 
+    Histo m_autoBrightValHistos[7];
+    float m_autoBrightVal;
+    float m_autoBrightGain;
+    float m_autoBrightBias;
+    uint8_t updateAutoBright();
+
+    Histo m_autoWhiteDeltaUHisto;
+    Histo m_autoWhiteDeltaVHisto;
+    float m_autoWhiteRedGain;
+    float m_autoWhiteBlueGain;
+    float m_autoWhiteGain;
+    uint32_t m_autoWhiteWBV;
+    uint32_t updateAutoWhite();
+    void setAutoWhiteWBV(uint32_t wbv);
+
 private:
     int handleSegment(uint8_t signature, uint16_t row, uint16_t startCol, uint16_t length);
 	void endFrame();

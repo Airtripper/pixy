@@ -481,9 +481,9 @@ int ColorLUT::generateLUT()
                     uint8_t bestSigId = 0;
                     for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
                         // check signature compatibility and calc the distance in the (u,v) plane
-                        float uf,vf;
+                        float uf,vf,val,sat,dotProd;
                         const ExperimentalSignature& sig = expSig(s);
-                        if( sig.isActive() && sig.isRgbAccepted(rf,gf,bf, uf,vf)){
+                        if( sig.isActive() && sig.isRgbAccepted(rf,gf,bf, uf,vf,val,sat,dotProd)){
                             float du = uf-sig.uMed();
                             float dv = vf-sig.vMed();
                             float dst2 = du*du+dv*dv;

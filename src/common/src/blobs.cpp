@@ -24,7 +24,10 @@
 
 #define CC_SIGNATURE(s) (m_ccMode==CC_ONLY || m_clut.getType(s)==CL_MODEL_TYPE_COLORCODE)
 
-Blobs::Blobs(Qqueue *qq, uint8_t *lut) : m_clut(lut)
+Blobs::Blobs(Qqueue *qq, uint8_t *lut) :
+    m_clut(lut),
+    m_autoWhiteDeltaUHisto(-0.1f,0.1f),
+    m_autoWhiteDeltaVHisto(-0.1f,0.1f)
 {
     int i;
 
@@ -50,8 +53,10 @@ Blobs::Blobs(Qqueue *qq, uint8_t *lut) : m_clut(lut)
     m_ccBlobReadIndex = 0;
 
     // reset blob assemblers
-    for (i=0; i<CL_NUM_SIGNATURES; i++)
+    for (i=0; i<CL_NUM_SIGNATURES; i++){
         m_assembler[i].Reset();
+        m_autoBrightValHistos[i].reset(0.0f,1.0f);
+    }
 }
 
 int Blobs::setParams(uint16_t maxBlobs, uint16_t maxBlobsPerModel, uint32_t minArea, ColorCodeMode ccMode)
@@ -125,6 +130,10 @@ int Blobs::runlengthAnalysis()
     m_numQvals = 0;
 #endif
 
+    for(uint16_t i=0; i<7; ++i) m_autoBrightValHistos[i].reset();
+    m_autoWhiteDeltaUHisto.reset();
+    m_autoWhiteDeltaVHisto.reset();
+
     while(1)
     {
         while (m_qq->dequeue(&qval)==0);
@@ -191,15 +200,24 @@ int Blobs::runlengthAnalysis()
                 ++sigId;
 #endif
                 // check signature compatibility and calc the distance in the (u,v) plane
-                float u,v;
+                float u,v,val,sat,dotProd;
                 const ExperimentalSignature& es = m_clut.expSig(sigId);
-                if( es.isActive() && es.isRgbAccepted(r,g,b, u,v)){
+                if( es.isActive() && es.isRgbAccepted( r,g,b,  u,v,val,sat,dotProd)){
                     float du = u-es.uMed();
                     float dv = v-es.vMed();
                     float dst2 = du*du + dv*dv;
                     if(dst2<dst2Min){
                         dst2Min=dst2;
                         bestSigId=sigId;
+                    }
+                    if( m_autoBrightGain>0.0f && es.hsvValMax()>=1.0f-bite && es.hsvValMin()<0.5f){
+                        m_autoBrightValHistos[sigId-1].add(val);
+                    }
+                    if( m_autoWhiteGain>0.0f && es.hsvSatMed()>0.1 && sat>0.1){
+                        float norm = sat * es.hsvSatMed();
+                        float norm2 = 1.0f/(norm*sat);
+                        m_autoWhiteDeltaUHisto.add( norm2*(u*norm-dotProd*es.uMed()) );
+                        m_autoWhiteDeltaVHisto.add( norm2*(v*norm-dotProd*es.vMed()) );
                     }
                 }
             }
@@ -1206,4 +1224,74 @@ void Blobs::endFrame()
         m_assembler[i].SortFinished();
     }
 }
+
+uint8_t Blobs::updateAutoBright(){
+
+    const float pt1fac = 0.1f;
+    static float pt1val = 0.0f;
+
+    float deltaSum = 0.0f;
+    uint16_t cnt = 0;
+    for(uint16_t i=0; i<7; ++i){
+        if(m_autoBrightValHistos[i].n()>m_minArea){
+            ++cnt;
+            const float mgc = 0.95f;
+            deltaSum += m_autoBrightValHistos[i].phi(mgc)-m_autoBrightValHistos[i].X(mgc)+m_autoBrightBias;
+        }
+    }
+    int16_t ibrght = 80;
+    if(cnt){
+        float val = deltaSum/cnt;
+        pt1val = pt1fac*(val - pt1val);
+        m_autoBrightVal *= 1.0f+m_autoBrightGain*pt1val*10.0f;
+        ibrght = m_autoBrightVal+0.5f;
+        if(ibrght<=1){ibrght=1; m_autoBrightVal=1.0f;}
+        else if(ibrght>=254){ibrght=254; m_autoBrightVal=254;}
+    }else{
+         m_autoBrightVal=80.0f;
+         pt1val=0.0f;
+    }
+    return ibrght;
+}
+
+uint32_t Blobs::updateAutoWhite(){
+
+    const float pt1fac = 0.1f;
+    static float dbFltr = 0.0f;
+    static float drFltr = 0.0f;
+
+    if(m_autoWhiteDeltaUHisto.n()>m_minArea){
+        dbFltr = pt1fac * (m_autoWhiteDeltaUHisto.X(0.5) - dbFltr);
+        drFltr = pt1fac * (m_autoWhiteDeltaVHisto.X(0.5) - drFltr);
+        m_autoWhiteBlueGain *= 1.0f - m_autoWhiteGain*dbFltr;
+        m_autoWhiteRedGain  *= 1.0f - m_autoWhiteGain*drFltr;
+    }else{
+        dbFltr = drFltr = 0.0f;
+    }
+
+    uint8_t bg = m_autoWhiteBlueGain+0.5;
+    uint8_t rg = m_autoWhiteRedGain+0.5;
+
+    uint32_t wbv = bg;
+    wbv <<= 8;
+    wbv |= rg;
+    wbv <<= 8;
+    wbv |= (m_autoWhiteWBV&0xff);
+
+    m_autoWhiteWBV = wbv;
+
+    return m_autoWhiteWBV;
+}
+
+void Blobs::setAutoWhiteWBV(uint32_t wbv)
+{
+    m_autoWhiteWBV = wbv;
+    wbv>>=8;
+    m_autoWhiteRedGain = (wbv&0xff);
+    wbv>>=8;
+    m_autoWhiteBlueGain = (wbv&0xff);
+}
+
+
+
 
