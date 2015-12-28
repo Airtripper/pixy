@@ -15,7 +15,9 @@
 
 #ifndef PIXY
 #include "debug.h"
+#define FRAME_PER_SEC_CORR 1.0f
 #else
+#define FRAME_PER_SEC_CORR 0.5f
 #include "pixy_init.h"
 #include "misc.h"
 #endif
@@ -23,6 +25,12 @@
 #include "blobs.h"
 
 #define CC_SIGNATURE(s) (m_ccMode==CC_ONLY || m_clut.getType(s)==CL_MODEL_TYPE_COLORCODE)
+
+// parameter names
+const char* parName_autoBrightGain = "AutoBrightGain";
+const char* parName_autoBrightBias = "AutoBrightBias";
+const char* parName_autoWhiteGain = "AutoWhiteGain";
+
 
 Blobs::Blobs(Qqueue *qq, uint8_t *lut) :
     m_clut(lut),
@@ -1227,7 +1235,7 @@ void Blobs::endFrame()
 
 uint8_t Blobs::updateAutoBright(){
 
-    const float pt1fac = 0.1f;
+    const float pt1fac = 0.1f;//*FRAME_PER_SEC_CORR;
     static float pt1val = 0.0f;
 
     float deltaSum = 0.0f;
@@ -1243,10 +1251,14 @@ uint8_t Blobs::updateAutoBright(){
     if(cnt){
         float val = deltaSum/cnt;
         pt1val = pt1fac*(val - pt1val);
-        m_autoBrightVal *= 1.0f+m_autoBrightGain*pt1val*10.0f;
+        m_autoBrightVal *= 1.0f+m_autoBrightGain*pt1val*5.0f;//*FRAME_PER_SEC_CORR;
         ibrght = m_autoBrightVal+0.5f;
-        if(ibrght<=1){ibrght=1; m_autoBrightVal=1.0f;}
-        else if(ibrght>=254){ibrght=254; m_autoBrightVal=254;}
+        //if(ibrght<=1){ibrght=1; m_autoBrightVal=1.0f;}
+        //else if(ibrght>=254){ibrght=254; m_autoBrightVal=254;}
+        if(ibrght<=1 || ibrght>=254){
+            m_autoBrightVal=80.0f;
+            ibrght = 80;
+        }
     }else{
          m_autoBrightVal=80.0f;
          pt1val=0.0f;
@@ -1256,15 +1268,15 @@ uint8_t Blobs::updateAutoBright(){
 
 uint32_t Blobs::updateAutoWhite(){
 
-    const float pt1fac = 0.1f;
+    const float pt1fac = 0.1f;//*FRAME_PER_SEC_CORR;
     static float dbFltr = 0.0f;
     static float drFltr = 0.0f;
 
     if(m_autoWhiteDeltaUHisto.n()>m_minArea){
         dbFltr = pt1fac * (m_autoWhiteDeltaUHisto.X(0.5) - dbFltr);
         drFltr = pt1fac * (m_autoWhiteDeltaVHisto.X(0.5) - drFltr);
-        m_autoWhiteBlueGain *= 1.0f - m_autoWhiteGain*dbFltr;
-        m_autoWhiteRedGain  *= 1.0f - m_autoWhiteGain*drFltr;
+        m_autoWhiteBlueGain *= 1.0f - m_autoWhiteGain*dbFltr;//*FRAME_PER_SEC_CORR;
+        m_autoWhiteRedGain  *= 1.0f - m_autoWhiteGain*drFltr;//*FRAME_PER_SEC_CORR;
     }else{
         dbFltr = drFltr = 0.0f;
     }

@@ -24,8 +24,6 @@
 #include "calc.h"
 #include "debug.h"
 
-#define EXP_SIG_PARMS_STORED_ON_PIXY
-
 // declare module
 MON_MODULE(CccModule);
 
@@ -207,26 +205,36 @@ void CccModule::paramChange()
         relut = true;
     }
 
-    if (pixyParameterChanged("AutoBrightGain", &val))
+    if (pixyParameterChanged( parName_autoBrightGain, &val))
     {
         m_blobs->m_autoBrightGain = val.toFloat();
     }
-    if (pixyParameterChanged("AutoBrightBias", &val))
+    if (pixyParameterChanged( parName_autoBrightBias, &val))
     {
         m_blobs->m_autoBrightBias = val.toFloat();
     }
-    if (pixyParameterChanged("AutoWhiteGain", &val))
+    if (pixyParameterChanged( parName_autoWhiteGain, &val))
     {
         m_blobs->m_autoWhiteGain = val.toFloat();
     }
     if (pixyParameterChanged("Camera Brightness", &val))
     {
-        m_blobs->m_autoBrightVal = val.toUInt();
+        //m_blobs->m_autoBrightVal = val.toUInt();
     }
     if (pixyParameterChanged("AWB Value", &val))
     {
-        m_blobs->setAutoWhiteWBV(val.toUInt());
+        uint32_t wbv = val.toUInt();
+        if(wbv>0xffffff){
+            wbv&=0xffffff;
+            m_blobs->setAutoWhiteWBV(wbv);
+            EXPLOG("reset aWBV to 0x%6X\n",m_blobs->m_autoWhiteWBV);
+        }
     }
+    if (pixyParameterChanged("Auto White Balance", &val))
+    {
+         m_awbOn=val.toUInt();
+    }
+
 
     if (pixymonParameterChanged("Use exp LUT", &val)){
         m_blobs->m_clut.m_useExpLut = val.toBool();
@@ -451,33 +459,39 @@ int CccModule::renderCMV2(uint8_t renderFlags, uint16_t width, uint16_t height, 
     m_blobs->blobify();
 
     static uint8_t brghtOld=80;
-    uint8_t brght = m_blobs->updateAutoBright();
-    if(brght != brghtOld){
-        brghtOld=brght;
-        Parameter *param = m_interpreter->m_pixyParameters.parameter("Camera Brightness");
-        m_interpreter->m_pixyParameters.mutex()->lock();
-        param->set( brght, true);
-        param->setDirty( true);
-        m_interpreter->m_pixyParameters.mutex()->unlock();
-        m_interpreter->updateParam();
+    uint8_t brght = 0;
+    if(m_blobs->m_autoBrightGain>0.0f){
+        brght = m_blobs->updateAutoBright();
+        if(brght != brghtOld){
+            brghtOld=brght;
+            Parameter *param = m_interpreter->m_pixyParameters.parameter("Camera Brightness");
+            m_interpreter->m_pixyParameters.mutex()->lock();
+            param->set( brght, true);
+            param->setDirty( true);
+            m_interpreter->m_pixyParameters.mutex()->unlock();
+            m_interpreter->updateParam();
+        }
     }
 
     static uint32_t wbvOld=0;
-    uint32_t wbv = m_blobs->updateAutoWhite();
-    if(wbv!=wbvOld){
-        wbvOld=wbv;
-        Parameter *param = m_interpreter->m_pixyParameters.parameter("AWB Value");
-        m_interpreter->m_pixyParameters.mutex()->lock();
-        param->set( wbv, true);
-        param->setDirty( true);
-        m_interpreter->m_pixyParameters.mutex()->unlock();
-        m_interpreter->updateParam();
+    uint32_t wbv = 0;
+    if(!m_awbOn && m_blobs->m_autoWhiteGain>0.0f){
+        wbv = m_blobs->updateAutoWhite();
+        if(wbv!=wbvOld){
+            wbvOld=wbv;
+            Parameter *param = m_interpreter->m_pixyParameters.parameter("AWB Value"); // just noticed this is rather dirty ...
+            m_interpreter->m_pixyParameters.mutex()->lock();
+            param->set( wbv, true);
+            param->setDirty( true);
+            m_interpreter->m_pixyParameters.mutex()->unlock();
+            m_interpreter->updateParam();
+        }
     }
 
     static int16_t cnt=0;
     if(++cnt>10){
         cnt=0;
-        cprintf("brght=%d wbv=%06X\n", brght,wbv);
+        cprintf("brght=%d wbv=0x%06X\n", brght,wbv);
     }
 
 

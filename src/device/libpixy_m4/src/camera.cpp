@@ -176,7 +176,7 @@ static uint8_t g_mode = (uint8_t)-1;
 static uint8_t g_awb = 1;
 static uint8_t g_aec = 1;
 static uint8_t g_lightMode = 0;
-static uint8_t g_brightness = CAM_BRIGHTNESS_DEFAULT;
+uint8_t g_brightness = CAM_BRIGHTNESS_DEFAULT;
 static ChirpProc g_getFrameM0 = -1;
 static uint32_t g_aecValue = 0;
 static uint32_t g_awbValue = 0;
@@ -590,10 +590,12 @@ void cam_setRegs(const uint8_t *rPairs, int len)
 
 void cam_shadowCallback(const char *id, const uint32_t &val)
 {
-	if (strcmp(id, "Camera Brightness")==0)
+	if (strcmp(id, "Camera Brightness")==0){
 		cam_setBrightness(val);
-	else if (strcmp(id, "AWB Value")==0)
+	}
+	else if (strcmp(id, "AWB Value")==0){
 		cam_setWBV(val);
+	}
 	else if (strcmp(id, "Auto Exposure Correction")==0)
 	{
 		if (val==0)

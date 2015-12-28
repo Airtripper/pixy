@@ -399,11 +399,6 @@ int ColorLUT::generateLUT()
 #ifdef PIXY
     uint32_t timer;
     setTimer(&timer);
-#if 1
-    const uint32_t keepAliveTmOut = 50000;
-    uint32_t keepAliveTmr;
-    setTimer(&timer);
-#endif
 #else
     int collisions = 0;
 #endif
@@ -461,12 +456,7 @@ int ColorLUT::generateLUT()
                 vi &= (1<<CL_LUT_COMPONENT_SCALE)-1;
                 int16_t lutIdx = (ui<<CL_LUT_COMPONENT_SCALE)+ vi;
 
-#ifdef PIXY
-                    if(getTimer(keepAliveTmr)>keepAliveTmOut){
-                         g_chirpUsb->service(); // keep alive
-                         setTimer(&keepAliveTmr);
-                    }
-#endif
+                keepOnChirping();
 
                 for( uint16_t g=gMin; g<=gMax; g+=stpG){
 
@@ -481,7 +471,7 @@ int ColorLUT::generateLUT()
                     uint8_t bestSigId = 0;
                     for (uint16_t s=1; s<=CL_NUM_SIGNATURES; ++s){
                         // check signature compatibility and calc the distance in the (u,v) plane
-                        float uf,vf,val,sat,dotProd;
+                        float uf=-1,vf=-1,val=-1,sat=-1,dotProd=-1;
                         const ExperimentalSignature& sig = expSig(s);
                         if( sig.isActive() && sig.isRgbAccepted(rf,gf,bf, uf,vf,val,sat,dotProd)){
                             float du = uf-sig.uMed();

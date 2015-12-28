@@ -43,6 +43,7 @@ private:
     void renderBlobsA(bool blend, QImage *image, float scale, BlobA *blobs, uint32_t numBlobs);
     QString lookup(uint16_t signum);
 
+    bool m_awbOn;
     uint32_t m_crc;
     uint8_t *m_lut;
     Qqueue *m_qq;

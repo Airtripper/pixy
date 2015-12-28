@@ -32,6 +32,11 @@
 #define BL_BEGIN_MARKER	      0xaa55
 #define BL_BEGIN_MARKER_CC    0xaa56
 
+// parameter names
+extern const char* parName_autoBrightGain;
+extern const char* parName_autoBrightBias;
+extern const char* parName_autoWhiteGain;
+
 enum ColorCodeMode
 {
     DISABLED = 0,

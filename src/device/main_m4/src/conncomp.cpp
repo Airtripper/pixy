@@ -32,6 +32,7 @@
 Qqueue *g_qqueue;
 Blobs *g_blobs;
 uint16_t g_ledBrightness;
+int16_t g_skipFrames=0;
 
 int g_loop = 0;
 
@@ -211,6 +212,17 @@ void eSigValMax_shadowCallback(const char *id, const float &val){
     relut();
 }
 
+void autoBrightGain_shadowCallback(const char *id, const float &val){
+	g_blobs->m_autoBrightGain = val;
+}
+
+void autoBrightBias_shadowCallback(const char *id, const float &val){
+	g_blobs->m_autoBrightBias = val;
+}
+
+void autoWhiteGain_shadowCallback(const char *id, const float &val){
+	g_blobs->m_autoWhiteGain = val;
+}
 
 void cc_teachThreshCallback(const char *id, const uint32_t &val)
 {
@@ -342,12 +354,25 @@ void cc_loadParams(void)
 		"@c Handy Sets the minimum required area in pixels for a block.  Blocks with less area won't be sent. (default 20)", UINT32(20), END);
 
 	float valF;
-	prm_add("AutoBrightGain", PRM_FLAG_SLIDER, "@c Handy @m 0.0 @M 0.5 Sets Auto Bright control speed", FLT32(0.1f), END);
-	//prm_get(id, &valF, END);
-	//g_blobs->m_clut.accExpSig(i).setHsvValMax(valF);
-	//prm_setShadowCallback(id, (ShadowCallback)eSigValMax_shadowCallback);
-	prm_add("AutoBrightBias", PRM_FLAG_SLIDER, "@c Handy @m -0.5 @M 0.5 Sets Auto Bright control bias", FLT32(0.0f), END);
-	prm_add("AutoWhiteGain", PRM_FLAG_SLIDER, "@c Handy @m 0.0 @M 1.0 Sets Auto Bright control speed", FLT32(0.1f), END);
+	prm_add( parName_autoBrightGain, PRM_FLAG_SLIDER, "@c Handy @m 0.0 @M 1.0 Sets Auto Bright control speed", FLT32(0.0f), END);
+	prm_get( parName_autoBrightGain, &valF, END);
+	g_blobs->m_autoBrightGain = valF;
+	prm_setShadowCallback( parName_autoBrightGain, (ShadowCallback)autoBrightGain_shadowCallback);
+
+	prm_add( parName_autoBrightBias, PRM_FLAG_SLIDER, "@c Handy @m -0.5 @M 0.5 Sets Auto Bright control bias", FLT32(0.0f), END);
+	prm_get( parName_autoBrightBias, &valF, END);
+	g_blobs->m_autoBrightBias = valF;
+	prm_setShadowCallback( parName_autoBrightBias, (ShadowCallback)autoBrightBias_shadowCallback);
+
+	prm_add( parName_autoWhiteGain, PRM_FLAG_SLIDER, "@c Handy @m 0.0 @M 1.0 Sets Auto Bright control speed", FLT32(0.0f), END);
+	prm_get( parName_autoWhiteGain, &valF, END);
+	g_blobs->m_autoWhiteGain = valF;
+	prm_setShadowCallback( parName_autoWhiteGain, (ShadowCallback)autoWhiteGain_shadowCallback);
+
+	prm_add("FrameSkip", 0, "@c Handy Skip update of Blob list for x frames => Increase number of Blobs read by slow clients on slow link", UINT8(0), END);
+	prm_get("FrameSkip", &valB, END);
+	g_skipFrames = valB;
+
 
 	// load
 	uint8_t ccMode;
@@ -386,6 +411,9 @@ int cc_init(Chirp *chirp)
 		return -1;
 	}
 	cc_loadParams(); // setup default vals and load parameters
+
+	g_blobs->setAutoWhiteWBV( cam_getWBV());
+	g_blobs->m_autoBrightVal = g_brightness;
 
 	return 0;
 }

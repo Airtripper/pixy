@@ -40,7 +40,7 @@ extern const char* parName_eSigValMax;
 #define SQRTF sqrtf
 #endif
 
-
+void keepOnChirping(uint32_t dt=200);
 
 // The color signatures median (u,v) position in the chroma plane
 // Used in ExperimentalSignature class below.

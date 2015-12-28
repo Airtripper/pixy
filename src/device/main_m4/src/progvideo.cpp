@@ -73,8 +73,29 @@ int videoLoop()
 {
 	led_set(0);  // turn off any stray led 
 
+	// reset AEC dead band to large default after adjusting AEC brightness set point
 	if(g_brightCntDwn>0){
 		if( (g_brightCntDwn-=2)<=0) cam_stabilizeBrightness();
+	}
+
+	// the following is ugly ugly ugly
+	// Poll for changes on the AWB check box.
+	// If it has been deactivated, chirrrrrrp the actual WBV to pixymon.
+	static int8_t lmaA = -1;
+	if( lmaA==-1 ) lmaA = cam_getAWB();
+	int8_t awbOn=cam_getAWB();
+	if( awbOn!=lmaA){
+		lmaA = awbOn;
+		if(!awbOn){
+			uint32_t wbv = cam_getWBV();
+			if(wbv){
+				wbv|=0xff000000; // design award ?
+				prm_set( "AWB Value", UINT32(wbv), END);
+				prm_resetShadow( "AWB Value");
+				exec_sendEvent(g_chirpUsb, EVT_PARAM_CHANGE);
+				//DBG("chirped that sucker wbv=0x%X", wbv);
+			}
+		}
 	}
 
 	if (g_execArg==0)

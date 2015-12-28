@@ -142,18 +142,63 @@ int blobsLoop()
 	static uint32_t drop = 0;
 
 	// create blobs
+	++drop;
 	if (g_blobs->blobify()<0)
 	{
-		DBG("drop %d\n", drop++);
+		DBG("drop %d\n", drop);
 		return 0;
 	}
 	// handle received data immediately
 	if (g_interface!=SER_INTERFACE_LEGO)
 		handleRecv();
 
-	// send blobs
-	g_blobs->getBlobs(&blobs, &numBlobs, &ccBlobs, &numCCBlobs);
-	cc_sendBlobs(g_chirpUsb, blobs, numBlobs, ccBlobs, numCCBlobs);
+	// reset AEC dead band to large default after adjusting AEC brightness set point
+	if(g_brightCntDwn>0){
+		if( (g_brightCntDwn-=1)<=0) cam_stabilizeBrightness();
+	}
+
+	static int16_t skipCnt=1;
+	// run CCLs @ 25Hz as in pixymon
+	if(skipCnt--<=0){
+		skipCnt=1;
+
+		// trigger auto brightness control loop
+		uint8_t brght = 0;
+		if(g_blobs->m_autoBrightGain>0.0f){
+			brght = g_blobs->updateAutoBright();
+			cam_setBrightness(brght); // does not access camera registers if brightness value has not changed since last call
+		}
+
+		// trigger auto white balance control loop
+		static uint32_t wbvOld=0;
+		uint32_t wbv=0;
+		if(!cam_getAWB()){
+			if(g_blobs->m_autoWhiteGain>0.0f) wbv=g_blobs->updateAutoWhite();
+			if(wbv!=wbvOld){
+				wbvOld=wbv;
+				cam_setWBV(wbv);
+			}
+		}else{
+			wbv = cam_getWBV();
+			g_blobs->setAutoWhiteWBV(wbv);
+			wbvOld=wbv;
+		}
+
+		/*static int16_t cnt=0;
+		if(++cnt>10){
+			cnt=0;
+			DBG("brght=%d wbv=0x%06X\n", brght, wbv);
+		}*/
+	}
+
+	// give slow controller a chance to read few more color objs
+	static int16_t skipFrameCntDwn = 0;
+	if( skipFrameCntDwn--<=0){
+		skipFrameCntDwn = g_skipFrames;
+		// send blobs
+		g_blobs->getBlobs(&blobs, &numBlobs, &ccBlobs, &numCCBlobs);
+		cc_sendBlobs(g_chirpUsb, blobs, numBlobs, ccBlobs, numCCBlobs);
+	}
 
 	ser_getSerial()->update();
 

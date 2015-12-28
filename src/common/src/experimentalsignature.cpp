@@ -14,6 +14,16 @@ const char* parName_eSigValMin = "eSig%d ValMin";
 const char* parName_eSigValMax = "eSig%d ValMax";
 
 
+void keepOnChirping(uint32_t dt){
+#ifdef PIXY
+    static uint32_t keepAliveTmr=0;
+    if(getTimer(keepAliveTmr)>dt){
+        g_chirpUsb->service();
+        setTimer(&keepAliveTmr);
+    }
+#endif
+}
+
 ExperimentalSignature::ExperimentalSignature():   
     m_posUV(),
     m_hsvSatMed(0.00f),  // the default is white
@@ -52,11 +62,12 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     if(b>hsvVal)hsvVal=b;
     else if(b<rgbMin)rgbMin=b;
 
+    // This might happen due to floating point inaccuracies or the g1/g2 bayer mess.
+    if(hsvVal>1.0f)hsvVal=1.0f;
+
     // bail out early if not within hsv value limits
     // and handling of black pixels (division by zero prevention)
-    // The additional cut "hsvVal<=1.0f" handles hsv values above 1.0
-    // This might happen due to floating point inaccuracies or the g1/g2 bayer mess.
-    if( hsvVal<m_hsvValMin+bite || (hsvVal>m_hsvValMax && hsvVal<=1.0f) ){
+    if( hsvVal<m_hsvValMin+bite || hsvVal>m_hsvValMax ){
         u=v=hsvSat=dotProd=0.0f;
         return hsvVal+m_hsvValMin+m_hsvSatMin < bite;  // return true if signature accepts black
     }
@@ -66,7 +77,7 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     // bail out early if not within hsv saturation limits
     // and handling of grey pixels (division by zero prevention)
     if( hsvSat<m_hsvSatMin*hsvVal+bite || hsvSat>m_hsvSatMax*hsvVal) {
-        u=v=hsvSat=dotProd=0.0f;
+        u=v=dotProd=0.0f;
         return hsvSat+m_hsvSatMin<bite ; // return true if signature accepts 255 shades of grey ... :D
     }
 
@@ -131,6 +142,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
          translateRGB( rgbPix.m_r,rgbPix.m_g,rgbPix.m_b,  u, v, sat, val );
          hueHist.add( u);
          satHist.add( v);
+         keepOnChirping();
     }
     float uMean = hueHist.mean();
     float vMean = satHist.mean();
@@ -157,6 +169,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
          hueHist.add( hue0);
          satHist.add( sat);
          valHist.add( val);
+         keepOnChirping();
     }
 
     // saturation and hue selection cuts are defined by the values
@@ -194,6 +207,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
          hueHist.add( hue0);
          satHist.add( sat);
          valHist.add( val);
+         keepOnChirping();
     }
 
     // ... setup saturation limits
@@ -242,6 +256,7 @@ void ExperimentalSignature::init( IterPixel& pixIter)
     m_posUV.m_uMed = m_hsvSatMed*cosf( hueMed);
     m_posUV.m_vMed = m_hsvSatMed*sinf( hueMed);
 
+    // somthing bad happens if you log here ...
     //DBG("uMed=%.2f vMed=%.2f satMed=%.2f satMin=%.2f satMax=%.2f hueMed=%.2f hueRng=%.1f hueCos=%.4f hueOff=%.2f",
     //       uMed(), vMed(), m_hsvSatMed, m_hsvSatMin, m_hsvSatMax, hueMed*r2d, m_hsvHueRange*r2d, m_hsvCosDeltaHueMin, hueOff*r2d );
 
@@ -261,6 +276,8 @@ void ExperimentalSignature::translateRGB(float r, float g, float b, float &u, fl
     if(b>hsvVal)hsvVal=b;
     else if(b<rgbMin)rgbMin=b;
 
+    if(hsvVal>1.0f)hsvVal=1.0f;
+
     // a black pixel => set u and v zero and bail out (division by zero prevention)
     if( hsvVal<bite){
         u = v = 0.0f;
@@ -271,7 +288,7 @@ void ExperimentalSignature::translateRGB(float r, float g, float b, float &u, fl
     float hsvValInv=1.0f/hsvVal;
     hsvSat = (hsvVal-rgbMin) * hsvValInv;
 
-    // a gray pixel => set u and v zero and bail out (division by zero prevention)
+    // a grey pixel => set u and v zero and bail out (division by zero prevention)
     if( hsvSat<bite){
         u = v = 0.0f;
         return;

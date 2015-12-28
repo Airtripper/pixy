@@ -59,7 +59,7 @@ void cam_loadParams();
 
 extern CSccb *g_sccb;
 extern Frame8 g_rawFrame;
-
+extern uint8_t g_brightness;
 extern int16_t g_brightCntDwn;
 
 /* default register values for OV9715
