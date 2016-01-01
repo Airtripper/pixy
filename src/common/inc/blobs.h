@@ -56,7 +56,7 @@ public:
     BlobA *getMaxBlob(uint16_t signature=0, uint16_t *numBlobs=NULL);
     void getBlobs(BlobA **blobs, uint32_t *len, BlobB **ccBlobs, uint32_t *ccLen);
     int setParams(uint16_t maxBlobs, uint16_t maxBlobsPerModel, uint32_t minArea, ColorCodeMode ccMode);
-    int runlengthAnalysis();
+    int runlengthAnalysis(bool buildBlobs=true);
 #ifndef PIXY
     void getRunlengths(uint32_t **qvals, uint32_t *len);
 #endif

@@ -117,7 +117,7 @@ int Blobs::handleSegment(uint8_t signature, uint16_t row, uint16_t startCol, uin
 // 2: right X edge
 // 3: top Y edge
 // 4: bottom Y edge
-int Blobs::runlengthAnalysis()
+int Blobs::runlengthAnalysis( bool buildBlobs)
 {
     int32_t row=-1, icount=0;
     uint32_t startCol, sig, prevSig, prevStartCol, segmentStartCol, segmentEndCol, segmentSig=0;
@@ -268,7 +268,7 @@ int Blobs::runlengthAnalysis()
         if(!qvalAccepted) ++lutSel_koCnt;
 #endif
 
-        if (qvalAccepted)
+        if (qvalAccepted && buildBlobs)
         {
             qval.m_col >>= 7;
             startCol = qval.m_col;
@@ -297,7 +297,7 @@ int Blobs::runlengthAnalysis()
             segmentSig = 0;
         }
     }
-	endFrame();
+    if(buildBlobs) endFrame();
 
 #ifndef PIXY
     // log LUT preselection performance

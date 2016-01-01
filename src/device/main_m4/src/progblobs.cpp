@@ -143,10 +143,20 @@ int blobsLoop()
 
 	// create blobs
 	++drop;
-	if (g_blobs->blobify()<0)
-	{
-		DBG("drop %d\n", drop);
-		return 0;
+	// give slow controller a chance to read a few more color objs by skipping blobification
+	// the static count down var below is decremented further down in this function
+	static int16_t skipFrameCntDwn = 0;
+	if( skipFrameCntDwn<=0){
+		if (g_blobs->blobify()<0)
+		{
+			DBG("drop %d\n", drop);
+			return 0;
+		}
+	}else{
+		// just read out the qqueue data from the M0
+		// and update the data for the auto white and bright CCLs.
+		// Don't setup any blobs.
+		g_blobs->runlengthAnalysis(false);
 	}
 	// handle received data immediately
 	if (g_interface!=SER_INTERFACE_LEGO)
@@ -191,17 +201,15 @@ int blobsLoop()
 		}*/
 	}
 
-	// give slow controller a chance to read few more color objs
-	static int16_t skipFrameCntDwn = 0;
+	// give slow controller a chance to read a few more color objs
 	if( skipFrameCntDwn--<=0){
 		skipFrameCntDwn = g_skipFrames;
 		// send blobs
 		g_blobs->getBlobs(&blobs, &numBlobs, &ccBlobs, &numCCBlobs);
 		cc_sendBlobs(g_chirpUsb, blobs, numBlobs, ccBlobs, numCCBlobs);
+
+		ser_getSerial()->update();
 	}
-
-	ser_getSerial()->update();
-
 	// if user isn't controlling LED, set it here, according to biggest detected object
 	if (!g_ledSet)
 		cc_setLED();

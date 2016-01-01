@@ -84,7 +84,7 @@ bool ExperimentalSignature::isRgbAccepted(float r, float g, float b, float& u, f
     float hsvValInv=1.0f/hsvVal;
     hsvSat *= hsvValInv;     // now its really a saturation value
 
-    // calc classic YUV luminance y
+    // calculate classic YUV luminance y
     float y = yuv_wr*r + yuv_wg*g + yuv_wb*b;
 
     // calc classic YUV chrominance u and v and normalize them
