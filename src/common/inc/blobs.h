@@ -64,19 +64,37 @@ public:
 	ColorLUT m_clut;
     Qqueue *m_qq;
 
+    /// These histograms store for each signature the HSV value distribution of pixels accepted in Blobs::runlengthAnalysis.
+    /// Used for automatic adjustment of the OV9715 camera's AEC target set point (pixy's brightness setting) in function Blobs::updateAutoBright
     Histo m_autoBrightValHistos[7];
+    /// current brightness result of the auto brightness CCL
     float m_autoBrightVal;
+    /// Auto brightness CCL parameter
     float m_autoBrightGain;
+    /// Auto brightness CCL parameter
     float m_autoBrightBias;
+    /// Auto Bright closed control loop (CCL) function. Tries to optimize the brightness setting by analysing the cumulative probability
+    /// distribution Phi(X=HSV_value) of HSV value histograms above. Mhmm ... kind of maximises Phi(val=0.95) while keeping X(Phi=95%) in range.
+    /// This function does this analysis separately for each signature takes an evenly weighted average as base for the brightness adjustment.
+    /// The function returns a brightness value as accepted by function cam_setBrightness().
     uint8_t updateAutoBright();
 
+    /// These two histograms store the distribution of the relative u and v deviation of pixels accepted in Blobs::runLengthAnalysis to the signature's u and v median.
+    /// Used for automatic white balance adjustment.
     Histo m_autoWhiteDeltaUHisto;
     Histo m_autoWhiteDeltaVHisto;
+    /// gain factors for red and blue color adjusted by the auto white closed control loop in function updateAutoWhite()
     float m_autoWhiteRedGain;
     float m_autoWhiteBlueGain;
+    /// Auto white balance CCL speed parameter
     float m_autoWhiteGain;
+    ///  WBV value: Encoded red, gree and blue gains, as accepted by the function cam_setWBV
     uint32_t m_autoWhiteWBV;
+    /// Auto white closed control loop (CCL) function. Tries to minimize the deviation of the u and v chrominance median of accepted pixels to
+    /// the u and v median of the corresponding signature by adjusting the gains for red and blue color channels (u~b-y and v~r-y).
+    /// This function returns an adjusted WBV value (encoded red, gree and blue gains) as accepted by the function cam_setWBV.
     uint32_t updateAutoWhite();
+    /// Sets m_autoWhiteWBV and corresponding m_autoWhiteRedGain and m_autoWhiteBlueGain
     void setAutoWhiteWBV(uint32_t wbv);
 
 private:

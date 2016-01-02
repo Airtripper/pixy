@@ -15,9 +15,7 @@
 
 #ifndef PIXY
 #include "debug.h"
-#define FRAME_PER_SEC_CORR 1.0f
 #else
-#define FRAME_PER_SEC_CORR 0.5f
 #include "pixy_init.h"
 #include "misc.h"
 #endif
@@ -215,6 +213,7 @@ int Blobs::runlengthAnalysis( bool buildBlobs)
                     float dv = v-es.vMed();
                     float dst2 = du*du + dv*dv;
                     if(dst2<dst2Min){
+                        // take the signature with smallest distance in the (u,v)-plane
                         dst2Min=dst2;
                         bestSigId=sigId;
                     }
@@ -224,6 +223,9 @@ int Blobs::runlengthAnalysis( bool buildBlobs)
                     if( m_autoWhiteGain>0.0f && es.hsvSatMed()>0.1 && sat>0.1){
                         float norm = sat * es.hsvSatMed();
                         float norm2 = 1.0f/(norm*sat);
+                        // fill the auto white hists with the relative u and v deviation
+                        // with respect to the signatures u and v median
+                        // | (u,v)_pix - cos(phi)*(u,v)_sig | / |(u,v)_pix |
                         m_autoWhiteDeltaUHisto.add( norm2*(u*norm-dotProd*es.uMed()) );
                         m_autoWhiteDeltaVHisto.add( norm2*(v*norm-dotProd*es.vMed()) );
                     }
@@ -1235,7 +1237,7 @@ void Blobs::endFrame()
 
 uint8_t Blobs::updateAutoBright(){
 
-    const float pt1fac = 0.1f;//*FRAME_PER_SEC_CORR;
+    const float pt1fac = 0.1f;
     static float pt1val = 0.0f;
 
     float deltaSum = 0.0f;
@@ -1249,18 +1251,16 @@ uint8_t Blobs::updateAutoBright(){
     }
     int16_t ibrght = 80;
     if(cnt){
-        float val = deltaSum/cnt;
-        pt1val = pt1fac*(val - pt1val);
-        m_autoBrightVal *= 1.0f+m_autoBrightGain*pt1val*5.0f;//*FRAME_PER_SEC_CORR;
+        float val = deltaSum/cnt; // take average of all signatures
+        pt1val = pt1fac*(val - pt1val); // smooth it by a PT1 filter
+        m_autoBrightVal *= 1.0f+m_autoBrightGain*pt1val*5.0f; // kind of pure Integral CCL with relative error. Rather slow, but robust ... hopefully
         ibrght = m_autoBrightVal+0.5f;
-        //if(ibrght<=1){ibrght=1; m_autoBrightVal=1.0f;}
-        //else if(ibrght>=254){ibrght=254; m_autoBrightVal=254;}
         if(ibrght<=1 || ibrght>=254){
-            m_autoBrightVal=80.0f;
+            m_autoBrightVal=80.0f; // fall back
             ibrght = 80;
         }
     }else{
-         m_autoBrightVal=80.0f;
+         m_autoBrightVal=80.0f; // fall back
          pt1val=0.0f;
     }
     return ibrght;
@@ -1268,15 +1268,15 @@ uint8_t Blobs::updateAutoBright(){
 
 uint32_t Blobs::updateAutoWhite(){
 
-    const float pt1fac = 0.1f;//*FRAME_PER_SEC_CORR;
+    const float pt1fac = 0.1f;
     static float dbFltr = 0.0f;
     static float drFltr = 0.0f;
 
     if(m_autoWhiteDeltaUHisto.n()>m_minArea){
         dbFltr = pt1fac * (m_autoWhiteDeltaUHisto.X(0.5) - dbFltr);
         drFltr = pt1fac * (m_autoWhiteDeltaVHisto.X(0.5) - drFltr);
-        m_autoWhiteBlueGain *= 1.0f - m_autoWhiteGain*dbFltr;//*FRAME_PER_SEC_CORR;
-        m_autoWhiteRedGain  *= 1.0f - m_autoWhiteGain*drFltr;//*FRAME_PER_SEC_CORR;
+        m_autoWhiteBlueGain *= 1.0f - m_autoWhiteGain*dbFltr;
+        m_autoWhiteRedGain  *= 1.0f - m_autoWhiteGain*drFltr;
     }else{
         dbFltr = drFltr = 0.0f;
     }
